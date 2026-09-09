@@ -1,0 +1,1235 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Interactive presentation demo for PiMarg v1.0, the governed development path for Pi Agent and Oh My Pi.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23021E5C'/%3E%3Ctext x='32' y='40' text-anchor='middle' font-family='sans-serif' font-size='25' font-weight='700' fill='%23F0C060'%3E%E2%88%8F%3C/text%3E%3C/svg%3E">
+  <title>PiMarg v1.0 — Pi + OMP Workflow Demo</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #071326;
+      --surface: #0b2147;
+      --surface-2: #102b59;
+      --surface-3: #17366c;
+      --ink: #fafaf7;
+      --muted: #b9c7e6;
+      --line: #28477a;
+      --accent: #6b9bfa;
+      --accent-ink: #021e5c;
+      --good: #6ee7b7;
+      --warn: #f0c060;
+      --danger: #ff8e8e;
+      --stage-a: #8cc8ff;
+      --stage-b: #7ee0b5;
+      --stage-c: #c7a6ff;
+      --stage-d: #ffb37d;
+      --shadow: 0 16px 42px rgba(0, 0, 0, .28);
+      --radius: 14px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      --sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    html[data-theme="light"] {
+      color-scheme: light;
+      --bg: #fafaf7;
+      --surface: #ffffff;
+      --surface-2: #f4f1eb;
+      --surface-3: #e8effe;
+      --ink: #161614;
+      --muted: #4a4a46;
+      --line: #d8d4ca;
+      --accent: #0451f7;
+      --accent-ink: #ffffff;
+      --good: #177852;
+      --warn: #c27b1a;
+      --danger: #ad2d36;
+      --stage-a: #176ea5;
+      --stage-b: #177852;
+      --stage-c: #704eb2;
+      --stage-d: #a45118;
+      --shadow: 0 14px 34px rgba(19, 33, 46, .12);
+    }
+
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--sans);
+      line-height: 1.45;
+    }
+
+    button, select, input { font: inherit; }
+    button, select { color: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, select:focus-visible, input:focus-visible {
+      outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent);
+      outline-offset: 2px;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      min-height: 68px;
+      padding: 12px clamp(16px, 3vw, 42px);
+      border-bottom: 1px solid var(--line);
+      background: color-mix(in srgb, var(--bg) 92%, transparent);
+      backdrop-filter: blur(14px);
+    }
+
+    .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .brand-mark {
+      display: grid;
+      width: 38px;
+      height: 38px;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--surface-2);
+      padding: 7px 9px;
+    }
+    .brand-mark img { display: block; width: 100%; height: 100%; object-fit: contain; }
+    .brand-copy { min-width: 0; }
+    .brand-copy strong { display: block; font-size: 15px; letter-spacing: -.01em; }
+    .brand-copy span { display: block; color: var(--muted); font-size: 12px; }
+    .version {
+      padding: 3px 7px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--accent);
+      font-family: var(--mono);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    .top-actions { display: flex; align-items: center; gap: 8px; }
+
+    .icon-button, .quiet-button, .primary-button {
+      min-height: 38px;
+      border-radius: 9px;
+      font-weight: 720;
+    }
+    .icon-button, .quiet-button {
+      border: 1px solid var(--line);
+      background: var(--surface);
+    }
+    .icon-button { width: 40px; padding: 0; font-size: 17px; }
+    .quiet-button { padding: 0 12px; }
+    .primary-button {
+      border: 1px solid var(--accent);
+      padding: 0 15px;
+      background: var(--accent);
+      color: var(--accent-ink);
+    }
+    button:hover { border-color: var(--accent); }
+    button:disabled { cursor: not-allowed; opacity: .46; }
+
+    .shell {
+      width: min(1600px, 100%);
+      margin: 0 auto;
+      padding: clamp(18px, 3vw, 38px);
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(320px, .6fr);
+      gap: 28px;
+      align-items: end;
+      margin: 4px 0 24px;
+    }
+    .eyebrow {
+      margin: 0 0 9px;
+      color: var(--accent);
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+    h1 {
+      max-width: 760px;
+      margin: 0;
+      font-size: clamp(34px, 5vw, 70px);
+      line-height: .98;
+      letter-spacing: -.055em;
+    }
+    .hero-copy {
+      max-width: 720px;
+      margin: 16px 0 0;
+      color: var(--muted);
+      font-size: clamp(15px, 1.5vw, 18px);
+    }
+    .hero-note {
+      padding: 16px 18px;
+      border-left: 3px solid var(--accent);
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .hero-note strong { display: block; margin-bottom: 4px; color: var(--ink); }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 330px minmax(0, 1fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .controls {
+      position: sticky;
+      top: 86px;
+      max-height: calc(100vh - 104px);
+      overflow: auto;
+      padding: 18px;
+    }
+
+    .panel-heading {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: baseline;
+      margin-bottom: 18px;
+    }
+    .panel-heading h2, .panel-heading h3 { margin: 0; font-size: 15px; }
+    .panel-heading span { color: var(--muted); font-family: var(--mono); font-size: 10px; }
+
+    .control-group { margin: 0 0 18px; padding: 0; border: 0; }
+    .control-group:last-child { margin-bottom: 0; }
+    .control-label, .control-group legend {
+      display: block;
+      width: 100%;
+      margin: 0 0 8px;
+      padding: 0;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    select {
+      width: 100%;
+      min-height: 42px;
+      padding: 0 34px 0 11px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--surface-2);
+    }
+
+    .segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+    .segment {
+      min-height: 42px;
+      padding: 6px 9px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--surface-2);
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 750;
+    }
+    .segment[aria-pressed="true"] {
+      border-color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 13%, var(--surface-2));
+      color: var(--ink);
+    }
+
+    .toggle-list { display: grid; gap: 8px; }
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      min-height: 37px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .toggle-row input {
+      width: 38px;
+      height: 21px;
+      margin: 0;
+      accent-color: var(--accent);
+    }
+
+    .model-grid { display: grid; gap: 8px; }
+    .model-row { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 8px; align-items: center; }
+    .model-key {
+      display: grid;
+      width: 28px;
+      height: 28px;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .model-key.a { color: var(--stage-a); }
+    .model-key.b { color: var(--stage-b); }
+    .model-key.c { color: var(--stage-c); }
+    .model-key.d { color: var(--stage-d); }
+    .model-row select { min-height: 37px; font-size: 12px; }
+    .guard-message {
+      display: none;
+      margin: 8px 0 0 36px;
+      color: var(--danger);
+      font-size: 11px;
+    }
+    .guard-message.visible { display: block; }
+
+    .workspace { display: grid; gap: 18px; min-width: 0; }
+    .status-strip {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      overflow: hidden;
+    }
+    .stat { padding: 15px 17px; border-right: 1px solid var(--line); }
+    .stat:last-child { border-right: 0; }
+    .stat span { display: block; color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+    .stat strong { display: block; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; font-size: 14px; white-space: nowrap; }
+
+    .flow-panel { overflow: hidden; }
+    .flow-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 17px 19px;
+      border-bottom: 1px solid var(--line);
+    }
+    .flow-title { min-width: 0; }
+    .flow-title strong { display: block; font-size: 15px; }
+    .flow-title span { color: var(--muted); font-size: 12px; }
+    .flow-actions { display: flex; gap: 7px; }
+
+    .progress-track { height: 4px; background: var(--surface-3); }
+    .progress-bar { width: 0; height: 100%; background: var(--accent); transition: width .22s ease; }
+
+    .flow-canvas {
+      position: relative;
+      min-height: 392px;
+      padding: 34px 24px 30px;
+      overflow: auto;
+    }
+    .flow-list {
+      display: flex;
+      align-items: stretch;
+      width: max-content;
+      min-width: 100%;
+      gap: 28px;
+    }
+    .flow-step {
+      position: relative;
+      display: flex;
+      flex: 0 0 154px;
+      flex-direction: column;
+      min-height: 255px;
+      padding: 15px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface-2);
+      text-align: left;
+      transition: border-color .18s ease, translate .18s ease, box-shadow .18s ease;
+    }
+    .flow-step::after {
+      position: absolute;
+      top: 50%;
+      left: calc(100% + 1px);
+      width: 29px;
+      border-top: 1px solid var(--line);
+      content: "";
+    }
+    .flow-step::before {
+      position: absolute;
+      top: calc(50% - 3px);
+      left: calc(100% + 25px);
+      width: 6px;
+      height: 6px;
+      border-top: 1px solid var(--line);
+      border-right: 1px solid var(--line);
+      rotate: 45deg;
+      content: "";
+    }
+    .flow-step:last-child::after, .flow-step:last-child::before { display: none; }
+    .flow-step:hover { border-color: var(--accent); translate: 0 -2px; }
+    .flow-step.active {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+    }
+    .flow-step.complete { border-color: color-mix(in srgb, var(--good) 60%, var(--line)); }
+    .flow-step.blocked { border-color: var(--danger); }
+    .step-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .step-number { color: var(--muted); font-family: var(--mono); font-size: 10px; }
+    .stage-key {
+      display: inline-grid;
+      min-width: 25px;
+      height: 25px;
+      padding: 0 6px;
+      place-items: center;
+      border: 1px solid currentColor;
+      border-radius: 7px;
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 900;
+    }
+    .stage-key.a { color: var(--stage-a); }
+    .stage-key.b { color: var(--stage-b); }
+    .stage-key.c { color: var(--stage-c); }
+    .stage-key.d { color: var(--stage-d); }
+    .stage-key.gate, .stage-key.tool { color: var(--warn); }
+    .stage-key.done { color: var(--good); }
+    .step-title { display: block; margin: 18px 0 7px; font-size: 17px; font-weight: 800; line-height: 1.15; letter-spacing: -.025em; }
+    .step-summary { display: block; margin: 0; color: var(--muted); font-size: 12px; }
+    .step-meta { display: grid; gap: 6px; margin-top: auto; padding-top: 20px; }
+    .step-chip {
+      overflow: hidden;
+      padding: 5px 7px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 9px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .detail-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(260px, .6fr); }
+    .detail-main { padding: 22px; }
+    .detail-side { padding: 22px; border-left: 1px solid var(--line); background: var(--surface-2); }
+    .detail-kicker { margin: 0 0 7px; color: var(--accent); font-family: var(--mono); font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+    .detail-main h2 { margin: 0; font-size: clamp(22px, 3vw, 33px); letter-spacing: -.035em; }
+    .detail-summary { max-width: 750px; margin: 10px 0 20px; color: var(--muted); }
+    .detail-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .detail-block h3, .detail-side h3 { margin: 0 0 8px; color: var(--muted); font-size: 10px; letter-spacing: .09em; text-transform: uppercase; }
+    .detail-block ul { margin: 0; padding-left: 18px; }
+    .detail-block li { margin: 5px 0; font-size: 13px; }
+    .role-card { margin-bottom: 17px; }
+    .role-card:last-child { margin-bottom: 0; }
+    .role-card strong { display: block; font-size: 14px; }
+    .role-card span { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; }
+    .runtime-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+    .runtime-pill {
+      padding: 5px 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 9px;
+    }
+    .runtime-pill.on { border-color: color-mix(in srgb, var(--good) 55%, var(--line)); color: var(--good); }
+    .runtime-pill.check { border-color: color-mix(in srgb, var(--warn) 55%, var(--line)); color: var(--warn); }
+
+    .approval-panel { padding: 18px 20px; }
+    .approval-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .approval-header h2 { margin: 0; font-size: 15px; }
+    .approval-header p { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
+    .lock { color: var(--warn); font-family: var(--mono); font-size: 12px; }
+    .approval-actions { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; margin-top: 14px; }
+    .approval-action { padding: 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); text-align: center; }
+    .approval-action strong { display: block; font-family: var(--mono); font-size: 10px; }
+    .approval-action span { display: block; margin-top: 3px; color: var(--muted); font-size: 9px; }
+
+    .legend { display: flex; flex-wrap: wrap; gap: 12px; color: var(--muted); font-size: 11px; }
+    .legend-item { display: inline-flex; align-items: center; gap: 5px; }
+    .legend-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+    .legend-dot.a { background: var(--stage-a); }
+    .legend-dot.b { background: var(--stage-b); }
+    .legend-dot.c { background: var(--stage-c); }
+    .legend-dot.d { background: var(--stage-d); }
+    .legend-dot.gate { background: var(--warn); }
+
+    .presenter .controls, .presenter .hero-note { display: none; }
+    .presenter .layout { grid-template-columns: 1fr; }
+    .presenter .hero { grid-template-columns: 1fr; }
+    .presenter .flow-canvas { min-height: 435px; }
+    .presenter .flow-step { flex-basis: 180px; min-height: 290px; }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    @media (max-width: 1050px) {
+      .hero { grid-template-columns: 1fr; align-items: start; }
+      .layout { grid-template-columns: 285px minmax(0, 1fr); }
+      .detail-grid { grid-template-columns: 1fr; }
+      .detail-side { border-top: 1px solid var(--line); border-left: 0; }
+      .status-strip { grid-template-columns: 1fr 1fr; }
+      .stat:nth-child(2) { border-right: 0; }
+      .stat:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+      .approval-actions { grid-template-columns: repeat(3, 1fr); }
+    }
+
+    @media (max-width: 760px) {
+      .topbar { position: static; }
+      .brand-copy span, #presenterText { display: none; }
+      .shell { padding: 16px; }
+      .hero { margin-top: 12px; }
+      .layout { grid-template-columns: 1fr; }
+      .controls { position: static; max-height: none; }
+      .flow-canvas { min-height: 0; padding: 20px; overflow: visible; }
+      .flow-list { display: grid; width: auto; min-width: 0; gap: 24px; }
+      .flow-step { min-height: 188px; }
+      .flow-step::after { top: 100%; left: 50%; width: 0; height: 25px; border-top: 0; border-left: 1px solid var(--line); }
+      .flow-step::before { top: calc(100% + 20px); left: calc(50% - 3px); rotate: 135deg; }
+      .detail-columns { grid-template-columns: 1fr; }
+      .approval-actions { grid-template-columns: 1fr 1fr; }
+    }
+
+    @media (max-width: 450px) {
+      .version { display: none; }
+      .topbar { padding: 10px 12px; }
+      .top-actions { gap: 5px; }
+      .quiet-button { padding: 0 9px; }
+      h1 { font-size: 39px; }
+      .status-strip { grid-template-columns: 1fr; }
+      .stat { border-right: 0; border-bottom: 1px solid var(--line); }
+      .stat:last-child { border-bottom: 0; }
+      .flow-head { align-items: flex-start; flex-direction: column; }
+      .detail-main, .detail-side { padding: 18px; }
+      .approval-actions { grid-template-columns: 1fr; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
+    }
+
+    @media print {
+      .top-actions, .controls, .flow-actions { display: none !important; }
+      body { background: #fff; color: #111; }
+      .topbar { position: static; }
+      .layout, .hero, .detail-grid { display: block; }
+      .panel, .hero-note { margin-bottom: 14px; box-shadow: none; }
+      .flow-canvas { overflow: visible; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true"><img src="../assets/brand/sangyaa-mark.png" alt=""></div>
+      <div class="brand-copy">
+        <strong>PiMarg</strong>
+        <span>by Sangyaa · Pi + OMP</span>
+      </div>
+      <span class="version">v1.0</span>
+    </div>
+    <div class="top-actions">
+      <button class="quiet-button" id="presenterButton" type="button" aria-pressed="false" aria-label="Enable presenter mode">
+        <span id="presenterText">Presenter mode</span>
+        <span aria-hidden="true">▣</span>
+      </button>
+      <button class="icon-button" id="themeButton" type="button" aria-label="Switch to light theme" title="Toggle theme">☼</button>
+    </div>
+  </header>
+
+  <main class="shell" id="app">
+    <section class="hero" aria-labelledby="pageTitle">
+      <div>
+        <p class="eyebrow">Interactive system preview</p>
+        <h1 id="pageTitle" aria-label="One prompt. A governed path.">One prompt.<br>A governed path.</h1>
+        <p class="hero-copy">See how one shared workflow runs on Pi Agent or Oh My Pi: it identifies the work, separates thinking from execution, chooses distinct model roles, verifies the result, and stops before protected actions.</p>
+      </div>
+      <div class="hero-note">
+        <strong>This is a safe presentation demo.</strong>
+        It simulates the orchestrator and never contacts a model, changes code, publishes, pushes, merges, or stores memory.
+      </div>
+    </section>
+
+    <section class="layout">
+      <aside class="panel controls" aria-labelledby="configureHeading">
+        <div class="panel-heading">
+          <h2 id="configureHeading">Configure scenario</h2>
+          <span>01 / INPUT</span>
+        </div>
+
+        <div class="control-group">
+          <label class="control-label" for="runtime">Agent runtime</label>
+          <select id="runtime">
+            <option value="pi">Pi Agent</option>
+            <option value="omp" selected>Oh My Pi (OMP)</option>
+          </select>
+        </div>
+
+        <fieldset class="control-group">
+          <legend>Work boundary</legend>
+          <div class="segmented">
+            <button type="button" class="segment context-button" data-context="job" aria-pressed="false">Job / client</button>
+            <button type="button" class="segment context-button" data-context="personal" aria-pressed="true">Personal</button>
+          </div>
+        </fieldset>
+
+        <div class="control-group">
+          <label class="control-label" for="workType">Work type</label>
+          <select id="workType">
+            <option value="1">1 · New idea / from scratch</option>
+            <option value="2" selected>2 · New feature in a repo</option>
+            <option value="3">3 · Improve an existing feature</option>
+            <option value="4">4 · Proactive bug fix</option>
+            <option value="5">5 · Security review or fixes</option>
+            <option value="6">6 · Thoughts about an existing repo</option>
+            <option value="7">7 · Business / sales analysis</option>
+          </select>
+        </div>
+
+        <div class="control-group">
+          <label class="control-label" for="skillSpine">Skill spine</label>
+          <select id="skillSpine">
+            <option value="auto" selected>Option 4 · Auto choose by stage</option>
+            <option value="compound">1 · Compound Engineering</option>
+            <option value="superpowers">2 · Superpowers</option>
+            <option value="gsd">3 · GSD Core</option>
+          </select>
+        </div>
+
+        <fieldset class="control-group">
+          <legend>Model roles · live selectors</legend>
+          <div class="model-grid">
+            <label class="model-row"><span class="model-key a">A</span><select id="modelA" aria-label="Stage A model"></select></label>
+            <label class="model-row"><span class="model-key c">C</span><select id="modelC" aria-label="Stage C model"></select></label>
+            <p class="guard-message" id="frontierGuard" role="alert">A and C must use different model families.</p>
+            <label class="model-row"><span class="model-key b">B</span><select id="modelB" aria-label="Stage B model"></select></label>
+            <label class="model-row"><span class="model-key d">D</span><select id="modelD" aria-label="Stage D model"></select></label>
+            <p class="guard-message" id="executionGuard" role="alert">B and D must use different model families.</p>
+          </div>
+        </fieldset>
+
+        <fieldset class="control-group">
+          <legend>Runtime options</legend>
+          <div class="toggle-list">
+            <label class="toggle-row"><span>Advisor / watcher if detected</span><input id="advisorToggle" type="checkbox" checked></label>
+            <label class="toggle-row"><span>Task fan-out if detected</span><input id="parallelToggle" type="checkbox" checked></label>
+            <label class="toggle-row"><span>Hindsight memory if approved</span><input id="memoryToggle" type="checkbox" checked></label>
+            <label class="toggle-row"><span>UI verification</span><input id="uiToggle" type="checkbox"></label>
+            <label class="toggle-row" id="fixToggleRow" hidden><span>Security fixes authorized</span><input id="fixToggle" type="checkbox"></label>
+          </div>
+        </fieldset>
+      </aside>
+
+      <div class="workspace">
+        <section class="panel status-strip" aria-label="Scenario summary">
+          <div class="stat"><span>Boundary</span><strong id="contextStat">Personal</strong></div>
+          <div class="stat"><span>Route</span><strong id="routeStat">New feature</strong></div>
+          <div class="stat"><span>Skill control</span><strong id="skillStat">Auto choose</strong></div>
+          <div class="stat"><span>Runtime · mode</span><strong id="modeStat">OMP · plan + build</strong></div>
+        </section>
+
+        <section class="panel flow-panel" aria-labelledby="flowHeading">
+          <div class="flow-head">
+            <div class="flow-title">
+              <strong id="flowHeading">Generated workflow</strong>
+              <span id="flowSubtitle">Select any stage to inspect its contract.</span>
+            </div>
+            <div class="flow-actions">
+              <button type="button" class="quiet-button" id="resetButton">Reset</button>
+              <button type="button" class="primary-button" id="playButton">Play flow</button>
+            </div>
+          </div>
+          <div class="progress-track" aria-hidden="true"><div class="progress-bar" id="progressBar"></div></div>
+          <div class="flow-canvas" id="flowCanvas">
+            <div class="flow-list" id="flowList" role="group" aria-label="Workflow stages"></div>
+          </div>
+        </section>
+
+        <section class="panel detail-grid" aria-live="polite" aria-labelledby="detailTitle">
+          <div class="detail-main">
+            <p class="detail-kicker" id="detailKicker">Stage 01</p>
+            <h2 id="detailTitle">Intent and boundary</h2>
+            <p class="detail-summary" id="detailSummary"></p>
+            <div class="detail-columns">
+              <div class="detail-block">
+                <h3>What happens</h3>
+                <ul id="detailActions"></ul>
+              </div>
+              <div class="detail-block">
+                <h3>Exit evidence</h3>
+                <ul id="detailExit"></ul>
+              </div>
+            </div>
+          </div>
+          <aside class="detail-side">
+            <div class="role-card">
+              <h3>Model role</h3>
+              <strong id="detailModel"></strong>
+              <span id="detailModelNote"></span>
+            </div>
+            <div class="role-card">
+              <h3>Skill / method</h3>
+              <strong id="detailSkill"></strong>
+              <span id="detailSkillNote"></span>
+            </div>
+            <div class="role-card">
+              <h3>Tools at this stage</h3>
+              <div class="runtime-grid" id="detailTools"></div>
+            </div>
+          </aside>
+        </section>
+
+        <section class="panel approval-panel" aria-labelledby="approvalHeading">
+          <div class="approval-header">
+            <div>
+              <h2 id="approvalHeading">Protected-action barrier</h2>
+              <p>Every approval is explicit, narrow, and valid for one matching action.</p>
+            </div>
+            <div class="lock">LOCKED BY DEFAULT</div>
+          </div>
+          <div class="approval-actions">
+            <div class="approval-action"><strong>DELETE / REMOVE</strong><span>ask first</span></div>
+            <div class="approval-action"><strong>PUSH TO MAIN</strong><span>ask first</span></div>
+            <div class="approval-action"><strong>MERGE PR</strong><span>ask first</span></div>
+            <div class="approval-action"><strong>POST WEB</strong><span>ask first</span></div>
+            <div class="approval-action"><strong>SHARE / COLLAB</strong><span>ask first</span></div>
+          </div>
+        </section>
+
+        <div class="legend" aria-label="Workflow legend">
+          <span class="legend-item"><span class="legend-dot a"></span>A · discovery</span>
+          <span class="legend-item"><span class="legend-dot c"></span>C · plan review</span>
+          <span class="legend-item"><span class="legend-dot b"></span>B · execution</span>
+          <span class="legend-item"><span class="legend-dot d"></span>D · code review</span>
+          <span class="legend-item"><span class="legend-dot gate"></span>gate / evidence</span>
+        </div>
+      </div>
+    </section>
+    <p class="sr-only" id="announcement" aria-live="assertive"></p>
+  </main>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const frontierModels = [
+        { id: "openai-frontier", label: "OpenAI latest frontier", family: "openai" },
+        { id: "claude-frontier", label: "Claude latest frontier", family: "claude" },
+        { id: "grok-frontier", label: "Grok latest frontier", family: "grok" }
+      ];
+      const executionModels = [
+        { id: "cursor-composer", label: "Cursor Composer", family: "cursor" },
+        { id: "openai-mid", label: "OpenAI mid-layer", family: "openai" },
+        { id: "claude-mid", label: "Claude mid-layer", family: "claude" },
+        { id: "devin-swe", label: "Devin SWE", family: "devin" },
+        { id: "eligible-zero", label: "Eligible zero-metered route", family: "dynamic" }
+      ];
+
+      const workTypes = {
+        "1": { short: "New idea", label: "New idea / development from scratch", repo: false, build: false, analysis: true },
+        "2": { short: "New feature", label: "New feature in an existing repository", repo: true, build: true, analysis: false },
+        "3": { short: "Improve feature", label: "Improve an existing feature", repo: true, build: true, analysis: false },
+        "4": { short: "Bug fix", label: "Proactive bug fix", repo: true, build: true, analysis: false },
+        "5": { short: "Security", label: "Security review or fixes", repo: true, build: false, analysis: false },
+        "6": { short: "Repo thoughts", label: "Thoughts about an existing repository", repo: true, build: false, analysis: true },
+        "7": { short: "Business", label: "Business, sales, or non-technical analysis", repo: false, build: false, analysis: true }
+      };
+
+      const skillNames = {
+        auto: "Option 4 · stage recommendation",
+        compound: "Compound Engineering",
+        superpowers: "Superpowers",
+        gsd: "GSD Core"
+      };
+
+      const state = {
+        runtime: "omp",
+        context: "personal",
+        workType: "2",
+        skill: "auto",
+        modelA: "openai-frontier",
+        modelC: "claude-frontier",
+        modelB: "cursor-composer",
+        modelD: "openai-mid",
+        advisor: true,
+        parallel: true,
+        memory: true,
+        ui: false,
+        fixes: false,
+        active: 0,
+        completeThrough: -1,
+        playing: false,
+        timer: null
+      };
+
+      const els = {
+        app: document.getElementById("app"),
+        runtime: document.getElementById("runtime"),
+        contextButtons: [...document.querySelectorAll(".context-button")],
+        workType: document.getElementById("workType"),
+        skillSpine: document.getElementById("skillSpine"),
+        modelA: document.getElementById("modelA"),
+        modelB: document.getElementById("modelB"),
+        modelC: document.getElementById("modelC"),
+        modelD: document.getElementById("modelD"),
+        frontierGuard: document.getElementById("frontierGuard"),
+        executionGuard: document.getElementById("executionGuard"),
+        advisor: document.getElementById("advisorToggle"),
+        parallel: document.getElementById("parallelToggle"),
+        memory: document.getElementById("memoryToggle"),
+        ui: document.getElementById("uiToggle"),
+        fixes: document.getElementById("fixToggle"),
+        fixRow: document.getElementById("fixToggleRow"),
+        contextStat: document.getElementById("contextStat"),
+        routeStat: document.getElementById("routeStat"),
+        skillStat: document.getElementById("skillStat"),
+        modeStat: document.getElementById("modeStat"),
+        flowList: document.getElementById("flowList"),
+        flowCanvas: document.getElementById("flowCanvas"),
+        flowSubtitle: document.getElementById("flowSubtitle"),
+        progress: document.getElementById("progressBar"),
+        play: document.getElementById("playButton"),
+        reset: document.getElementById("resetButton"),
+        detailKicker: document.getElementById("detailKicker"),
+        detailTitle: document.getElementById("detailTitle"),
+        detailSummary: document.getElementById("detailSummary"),
+        detailActions: document.getElementById("detailActions"),
+        detailExit: document.getElementById("detailExit"),
+        detailModel: document.getElementById("detailModel"),
+        detailModelNote: document.getElementById("detailModelNote"),
+        detailSkill: document.getElementById("detailSkill"),
+        detailSkillNote: document.getElementById("detailSkillNote"),
+        detailTools: document.getElementById("detailTools"),
+        announcement: document.getElementById("announcement"),
+        presenter: document.getElementById("presenterButton"),
+        theme: document.getElementById("themeButton")
+      };
+
+      function fillModels(select, models, selected) {
+        models.forEach(model => {
+          const option = document.createElement("option");
+          option.value = model.id;
+          option.textContent = model.label;
+          option.selected = model.id === selected;
+          select.append(option);
+        });
+      }
+
+      fillModels(els.modelA, frontierModels, state.modelA);
+      fillModels(els.modelC, frontierModels, state.modelC);
+      fillModels(els.modelB, executionModels, state.modelB);
+      fillModels(els.modelD, executionModels, state.modelD);
+
+      function selectedModel(id, pool) {
+        return pool.find(model => model.id === id) || pool[0];
+      }
+
+      function modelGuardValid() {
+        const a = selectedModel(state.modelA, frontierModels);
+        const c = selectedModel(state.modelC, frontierModels);
+        const b = selectedModel(state.modelB, executionModels);
+        const d = selectedModel(state.modelD, executionModels);
+        const frontierValid = a.family !== c.family;
+        const executionValid = b.family !== d.family;
+        els.frontierGuard.classList.toggle("visible", !frontierValid);
+        els.executionGuard.classList.toggle("visible", !executionValid);
+        els.play.disabled = !(frontierValid && executionValid);
+        return frontierValid && executionValid;
+      }
+
+      function stageSkill(stage, type) {
+        if (state.skill !== "auto") return skillNames[state.skill];
+        const routes = {
+          intake: "Auto Mode router",
+          runtime: "Native runtime detector",
+          code: "CodeGraph-first",
+          A: type === "1" ? "CE Brainstorm" : type === "7" ? "CE Strategy" : "CE Plan",
+          C: "CE Doc Review",
+          gate: "Decision ledger",
+          B: type === "4" ? "CE Debug" : type === "3" ? "CE Simplify Code" : type === "5" ? "Security Fix Finding" : "CE Work",
+          verify: type === "4" ? "Native DAP + repo tests" : "Repo-native verification",
+          D: "CE Code Review",
+          security: "Codex Security Scan",
+          lessons: "Session Lessons",
+          commit: state.runtime === "omp" ? "OMP atomic commit" : "Repository-native local commit"
+        };
+        return routes[stage] || "Auto Mode";
+      }
+
+      function makeStage(stage, title, summary, model, modelNote, tools, actions, exit, keyClass, optional = false) {
+        return { stage, title, summary, model, modelNote, tools, actions, exit, keyClass, optional, skill: stageSkill(stage, state.workType) };
+      }
+
+      function buildStages() {
+        const type = workTypes[state.workType];
+        const a = selectedModel(state.modelA, frontierModels).label;
+        const b = selectedModel(state.modelB, executionModels).label;
+        const c = selectedModel(state.modelC, frontierModels).label;
+        const d = selectedModel(state.modelD, executionModels).label;
+        const buildAuthorized = type.build || (state.workType === "5" && state.fixes);
+        const stages = [];
+
+        stages.push(makeStage(
+          "intake", "Intent + boundary",
+          `Classify “${type.label}” as ${state.context === "job" ? "job/client" : "personal"} work before selecting any implementation path.`,
+          "Router · no paid role yet", "Clarify only when the intent changes the route.",
+          ["ledger", "approval guard"],
+          ["Confirm the work type and desired outcome", state.context === "job" ? "Apply the job/client boundary: no Sangyaa branding" : "Personal branding may be used when requested", "Record assumptions and protected actions"],
+          ["Intent confirmed", "Boundary and branding rule recorded"], "gate"
+        ));
+
+        stages.push(makeStage(
+          "runtime", "Detect live runtime",
+          `Inspect the active ${state.runtime === "omp" ? "OMP" : "Pi"} tool, command, model, and memory catalogs. Optional capabilities are offered only when actually available.`,
+          "Runtime · no model", "Exact model versions are resolved live rather than hard-coded.",
+          ["auto_runtime_status", "auto_model_route", state.runtime === "omp" ? "ctx.models.list" : "Pi model registry"],
+          ["Discover authenticated A/B/C/D candidates", "Detect Advisor, task, DAP, UI, security, and memory support", "Record a fallback for every unavailable capability"],
+          ["Distinct A/C and B/D selections", "Capability report written to the session ledger"], "tool"
+        ));
+
+        if (type.repo) {
+          stages.push(makeStage(
+            "code", "Map the repository",
+            "Create architectural context before an agent reasons about existing code. CodeGraph owns flow and impact; language tools answer exact symbol questions.",
+            "Active stage role", "No separate model charge unless the stage uses a model.",
+            ["codegraph_explore", "lsp", "ast_grep", "ast_edit preview"],
+            ["Initialize or refresh CodeGraph", "Trace dependencies, execution paths, and change impact", "Use LSP for definitions, references, types, diagnostics, and renames"],
+            ["Relevant code paths and contracts identified", "No grep-based architectural guesswork"], "tool"
+          ));
+        }
+
+        stages.push(makeStage(
+          "A", "Discover + think",
+          "Turn the request and repository evidence into a clear problem statement, constraints, options, and success conditions.",
+          a, "Frontier reasoning role A · resolved to the latest eligible selector.",
+          ["read", ...(type.repo ? ["codegraph", "lsp", "ast_grep"] : []), ...(state.advisor ? ["advisor? read-only"] : [])],
+          ["Explore needs and uncertainty", "Compare viable approaches", "Define observable acceptance criteria", ...(state.advisor ? ["Use Advisor as a supplemental read-only watcher"] : [])],
+          ["Discovery brief grounded in evidence", "Open questions either answered or explicitly recorded"], "a"
+        ));
+
+        stages.push(makeStage(
+          "C", "Independent plan review",
+          "A different frontier model challenges the plan before implementation begins. It looks for missing constraints, risky assumptions, and cheaper reliable paths.",
+          c, "Frontier reviewer C · enforced to differ from A.",
+          ["read", "plan ledger", ...(state.parallel ? ["task · read-only"] : [])],
+          ["Review acceptance coverage and feasibility", "Check security, compatibility, reversibility, and cost", "Return a clear pass, revise, or block verdict"],
+          ["Review verdict recorded", "Required revisions incorporated before the gate"], "c"
+        ));
+
+        stages.push(makeStage(
+          "gate", "Plan + decision gate",
+          "Freeze the agreed plan in Markdown so every later agent receives the same scope, decisions, evidence expectations, and approval limits.",
+          "Orchestrator · deterministic", "No implementation begins while C has unresolved blockers.",
+          ["plan.md", "decisions.md", "session ledger"],
+          ["Map work items to acceptance evidence", "Choose serial or independent task execution", "Mark destructive and web actions as approval-required"],
+          ["Plan accepted", "Owners, checks, and stop conditions are explicit"], "gate"
+        ));
+
+        if (buildAuthorized) {
+          stages.push(makeStage(
+            "B", state.workType === "5" ? "Apply security fixes" : "Implement the plan",
+            state.parallel ? "Execute independent work items in isolated tasks, then integrate into one canonical tree." : "Execute the smallest reliable implementation slice in one canonical tree.",
+            b, "Execution role B · optimized for code and plan adherence.",
+            ["write", "edit", "bash", ...(state.parallel ? ["task · isolated"] : []), ...(type.repo ? ["codegraph", "lsp", "ast_edit"] : [])],
+            ["Implement only the accepted slice", "Add or update applicable tests", "Keep unrelated changes out", ...(state.parallel ? ["Fan out only independent ownership boundaries"] : [])],
+            ["Implementation complete in the canonical tree", "Focused checks are runnable", "No protected action performed"], "b"
+          ));
+
+          stages.push(makeStage(
+            "verify", "Verify behavior",
+            "Run evidence-producing checks before asking a reviewer to judge the code. Verification adapts to the affected surface.",
+            "Execution verifier", "Uses the B role or a lightweight eligible verifier; it does not replace D.",
+            ["tests", "typecheck", "lint/build", ...(state.workType === "4" ? ["debug · native DAP"] : []), ...(state.ui ? ["eval · browser/computer"] : [])],
+            ["Prove the happy path", "Exercise the highest-cost failure path", ...(state.workType === "4" ? ["Trace the runtime defect with native DAP when available"] : []), ...(state.ui ? ["Test first use, primary UI flow, invalid input, and dependency failure"] : [])],
+            ["Observed results attached to the ledger", "Skipped checks labeled not verified with consequence"], "gate"
+          ));
+
+          stages.push(makeStage(
+            "D", "Independent code review",
+            "A second execution-class model inspects the integrated change, tests, failure modes, and repository conventions without editing the code.",
+            d, "Reviewer D · enforced to differ from B.",
+            [state.runtime === "omp" ? "/review" : "shared review contract", "read", ...(type.repo ? ["codegraph", "lsp", "ast_grep"] : []), ...(state.parallel ? ["task · when detected"] : [])],
+            ["Report only evidence-backed findings", "Rank findings by impact and confidence", "Return pass, fix-and-rerun, or block"],
+            ["D verdict recorded", "No unresolved blocking finding"], "d"
+          ));
+        }
+
+        if (state.workType === "5" || state.ui) {
+          stages.push(makeStage(
+            "security", "Security gate",
+            "Perform a scoped security review when the work is security-led or touches a risk-bearing surface. Fixing remains separate from reviewing.",
+            state.workType === "5" && !state.fixes ? c : d,
+            "Uses the selected independent reviewer; native scanning is capability-gated.",
+            ["security_scan?", "security reviewer", ...(type.repo ? ["codegraph", "ast_grep"] : [])],
+            ["Scan the requested scope", "Validate findings before severity claims", "Keep review read-only unless fixes were explicitly authorized"],
+            ["Validated findings or clean-scan evidence", "Remediation and residual risk recorded"], "gate"
+          ));
+        }
+
+        stages.push(makeStage(
+          "lessons", "Close + remember",
+          "Capture one durable lesson, reconcile final decisions, and optionally retain only approved non-sensitive memory.",
+          "Lightweight close-out", "A new frontier call is unnecessary for routine summarization.",
+          ["lessons.md", ...(state.memory ? ["retain?", "learn?"] : [])],
+          ["Write the session lesson exactly once", state.memory ? "Retain validated reusable knowledge in project scope" : "Leave persistent memory off", "Never store secrets, client data, or hypotheses"],
+          ["Plan, decisions, evidence, and lesson are complete", state.memory ? "Approved memory retained or unavailability recorded" : "No memory retained"], "done"
+        ));
+
+        if (buildAuthorized) {
+          stages.push(makeStage(
+            "commit", "Optional local commit",
+            "After every gate passes, offer an atomic local commit. Shipping remains outside the flow until separately approved.",
+            state.runtime === "omp" ? "OMP commit helper" : "Local Git helper", "No model switch is needed.",
+            [state.runtime === "omp" ? "omp commit" : "git commit · local only", "approval guard"],
+            ["Group the verified change into clear local commits", "Stop before push, merge, publication, collab, or share"],
+            ["Local commit created only if requested", "Working state and next action are explicit"], "done", true
+          ));
+        }
+
+        return stages;
+      }
+
+      function renderList(element, items) {
+        element.replaceChildren();
+        items.forEach(item => {
+          const li = document.createElement("li");
+          li.textContent = item;
+          element.append(li);
+        });
+      }
+
+      function renderTools(tools) {
+        els.detailTools.replaceChildren();
+        tools.forEach(tool => {
+          const pill = document.createElement("span");
+          const conditional = tool.includes("?");
+          pill.className = `runtime-pill ${conditional ? "check" : "on"}`;
+          pill.textContent = tool;
+          els.detailTools.append(pill);
+        });
+      }
+
+      function renderDetail(stages) {
+        const stage = stages[state.active] || stages[0];
+        const index = Math.max(0, stages.indexOf(stage));
+        els.detailKicker.textContent = `Stage ${String(index + 1).padStart(2, "0")} · ${stage.stage.toUpperCase()}${stage.optional ? " · OPTIONAL" : ""}`;
+        els.detailTitle.textContent = stage.title;
+        els.detailSummary.textContent = stage.summary;
+        els.detailModel.textContent = stage.model;
+        els.detailModelNote.textContent = stage.modelNote;
+        els.detailSkill.textContent = stage.skill;
+        els.detailSkillNote.textContent = state.skill === "auto" ? "Chosen from the stage and work type." : "Dedicated skill family selected for the session.";
+        renderList(els.detailActions, stage.actions);
+        renderList(els.detailExit, stage.exit);
+        renderTools(stage.tools);
+      }
+
+      function stageKey(stage) {
+        const labels = { intake: "IN", runtime: "RT", code: "CG", gate: "✓", verify: "QA", security: "SEC", lessons: "L", commit: "COM" };
+        return labels[stage.stage] || stage.stage;
+      }
+
+      function renderFlow(preserveActive = true) {
+        stopPlayback();
+        const stages = buildStages();
+        if (!preserveActive || state.active >= stages.length) state.active = 0;
+        state.completeThrough = Math.min(state.completeThrough, stages.length - 1);
+        els.flowList.replaceChildren();
+
+        stages.forEach((stage, index) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "flow-step";
+          button.dataset.index = String(index);
+          if (index === state.active) {
+            button.classList.add("active");
+            button.setAttribute("aria-current", "step");
+          }
+          if (index <= state.completeThrough) button.classList.add("complete");
+
+          const top = document.createElement("span");
+          top.className = "step-top";
+          const number = document.createElement("span");
+          number.className = "step-number";
+          number.textContent = String(index + 1).padStart(2, "0");
+          const key = document.createElement("span");
+          key.className = `stage-key ${stage.keyClass}`;
+          key.textContent = stageKey(stage);
+          top.append(number, key);
+
+          const title = document.createElement("span");
+          title.className = "step-title";
+          title.textContent = stage.title;
+          const summary = document.createElement("span");
+          summary.className = "step-summary";
+          summary.textContent = stage.summary;
+          const meta = document.createElement("span");
+          meta.className = "step-meta";
+          const model = document.createElement("span");
+          model.className = "step-chip";
+          model.textContent = stage.model;
+          const skill = document.createElement("span");
+          skill.className = "step-chip";
+          skill.textContent = stage.skill;
+          meta.append(model, skill);
+          button.append(top, title, summary, meta);
+          button.addEventListener("click", () => selectStage(index, true));
+          els.flowList.append(button);
+        });
+
+        const type = workTypes[state.workType];
+        const buildAuthorized = type.build || (state.workType === "5" && state.fixes);
+        els.contextStat.textContent = state.context === "job" ? "Job / client" : "Personal";
+        els.routeStat.textContent = type.short;
+        els.skillStat.textContent = state.skill === "auto" ? "Auto choose" : skillNames[state.skill];
+        const runtimeLabel = state.runtime === "omp" ? "OMP" : "Pi";
+        els.modeStat.textContent = `${runtimeLabel} · ${buildAuthorized ? "plan + build" : "analysis / review"}`;
+        const parallelText = state.parallel && buildAuthorized
+          ? (state.runtime === "omp" ? "independent fan-out allowed" : "fan-out only if an extension is detected")
+          : "serial by default";
+        els.flowSubtitle.textContent = `${stages.length} governed stages · ${parallelText}`;
+        els.fixRow.hidden = state.workType !== "5";
+        updateProgress(stages);
+        renderDetail(stages);
+        modelGuardValid();
+      }
+
+      function updateProgress(stages) {
+        const percent = stages.length <= 1 ? 100 : (state.active / (stages.length - 1)) * 100;
+        els.progress.style.width = `${percent}%`;
+      }
+
+      function selectStage(index, announce = false) {
+        const stages = buildStages();
+        state.active = Math.max(0, Math.min(index, stages.length - 1));
+        [...els.flowList.children].forEach((node, nodeIndex) => {
+          node.classList.toggle("active", nodeIndex === state.active);
+          node.classList.toggle("complete", nodeIndex <= state.completeThrough);
+          if (nodeIndex === state.active) node.setAttribute("aria-current", "step");
+          else node.removeAttribute("aria-current");
+        });
+        updateProgress(stages);
+        renderDetail(stages);
+        const selected = els.flowList.children[state.active];
+        if (selected && announce) {
+          selected.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+          els.announcement.textContent = `Selected stage ${state.active + 1}: ${stages[state.active].title}`;
+        }
+      }
+
+      function stopPlayback() {
+        if (state.timer) window.clearInterval(state.timer);
+        state.timer = null;
+        state.playing = false;
+        els.play.textContent = "Play flow";
+      }
+
+      function playFlow() {
+        if (!modelGuardValid()) return;
+        if (state.playing) {
+          stopPlayback();
+          return;
+        }
+        const stages = buildStages();
+        if (state.active >= stages.length - 1) {
+          state.active = 0;
+          state.completeThrough = -1;
+        }
+        state.playing = true;
+        els.play.textContent = "Pause";
+        selectStage(state.active, true);
+        state.timer = window.setInterval(() => {
+          const currentStages = buildStages();
+          state.completeThrough = state.active;
+          if (state.active >= currentStages.length - 1) {
+            renderFlow(true);
+            els.announcement.textContent = "Workflow demo complete. Protected actions remain locked.";
+            return;
+          }
+          state.active += 1;
+          selectStage(state.active, true);
+        }, 1150);
+      }
+
+      function bindSelect(element, key) {
+        element.addEventListener("change", event => {
+          state[key] = event.target.value;
+          state.active = 0;
+          state.completeThrough = -1;
+          renderFlow(false);
+        });
+      }
+
+      els.contextButtons.forEach(button => {
+        button.addEventListener("click", () => {
+          state.context = button.dataset.context;
+          els.contextButtons.forEach(candidate => candidate.setAttribute("aria-pressed", String(candidate === button)));
+          state.active = 0;
+          state.completeThrough = -1;
+          renderFlow(false);
+        });
+      });
+
+      bindSelect(els.runtime, "runtime");
+      bindSelect(els.workType, "workType");
+      bindSelect(els.skillSpine, "skill");
+      bindSelect(els.modelA, "modelA");
+      bindSelect(els.modelB, "modelB");
+      bindSelect(els.modelC, "modelC");
+      bindSelect(els.modelD, "modelD");
+
+      [[els.advisor, "advisor"], [els.parallel, "parallel"], [els.memory, "memory"], [els.ui, "ui"], [els.fixes, "fixes"]].forEach(([element, key]) => {
+        element.addEventListener("change", event => {
+          state[key] = event.target.checked;
+          state.active = 0;
+          state.completeThrough = -1;
+          renderFlow(false);
+        });
+      });
+
+      els.play.addEventListener("click", playFlow);
+      els.reset.addEventListener("click", () => {
+        stopPlayback();
+        state.active = 0;
+        state.completeThrough = -1;
+        selectStage(0, true);
+      });
+
+      els.presenter.addEventListener("click", () => {
+        const enabled = !document.body.classList.contains("presenter");
+        document.body.classList.toggle("presenter", enabled);
+        els.presenter.setAttribute("aria-pressed", String(enabled));
+        els.presenter.setAttribute("aria-label", `${enabled ? "Disable" : "Enable"} presenter mode`);
+        els.announcement.textContent = enabled ? "Presenter mode enabled" : "Presenter mode disabled";
+      });
+
+      els.theme.addEventListener("click", () => {
+        const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+        document.documentElement.dataset.theme = next;
+        els.theme.textContent = next === "dark" ? "☼" : "☾";
+        els.theme.setAttribute("aria-label", `Switch to ${next === "dark" ? "light" : "dark"} theme`);
+      });
+
+      document.addEventListener("keydown", event => {
+        if (event.target.matches("select, input, button")) return;
+        if (event.key === "ArrowRight") selectStage(state.active + 1, true);
+        if (event.key === "ArrowLeft") selectStage(state.active - 1, true);
+        if (event.key === " ") {
+          event.preventDefault();
+          playFlow();
+        }
+      });
+
+      renderFlow(false);
+    })();
+  </script>
+</body>
+</html>

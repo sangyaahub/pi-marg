@@ -1,0 +1,42 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "pi-marg-marketplace",
+  "owner": {
+    "name": "Sangyaa",
+    "email": "contact@sangyaa.co"
+  },
+  "metadata": {
+    "description": "PiMarg — a governed development path for Pi Agent and Oh My Pi.",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "pi-marg",
+      "description": "Intent-led development workflow with live A/B/C/D routing, capability detection, verification, and approval gates.",
+      "source": "./",
+      "version": "1.0.0",
+      "author": {
+        "name": "Sangyaa",
+        "email": "contact@sangyaa.co"
+      },
+      "homepage": "https://github.com/sangyaahub/pi-marg",
+      "repository": "https://github.com/sangyaahub/pi-marg.git",
+      "license": "MIT",
+      "category": "development",
+      "keywords": [
+        "pi",
+        "omp",
+        "workflow",
+        "model-routing",
+        "codegraph",
+        "approvals"
+      ],
+      "tags": [
+        "pi-agent",
+        "oh-my-pi",
+        "multi-model",
+        "governed-workflow"
+      ]
+    }
+  ]
+}

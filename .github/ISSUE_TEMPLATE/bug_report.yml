@@ -1,0 +1,47 @@
+name: Bug report
+description: Report a reproducible PiMarg problem
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for helping improve PiMarg. Do not include credentials, client data, or security vulnerabilities here.
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: Runtime
+      options:
+        - Pi Agent
+        - Oh My Pi
+        - Both
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: PiMarg, runtime, and operating-system versions
+      placeholder: PiMarg 1.0.0, Pi 0.85.1, macOS 26
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Minimal steps, expected result, and actual result
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Redacted evidence
+      description: Logs, screenshots, or session evidence with sensitive values removed
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed credentials, client data, and personal information.
+          required: true
+        - label: This is not a vulnerability report; security issues follow SECURITY.md.
+          required: true

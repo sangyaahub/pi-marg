@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Setup questions and ideas
+    url: https://github.com/sangyaahub/pi-marg/discussions
+    about: Ask for help or discuss a workflow before filing an issue.
+  - name: Security vulnerability
+    url: https://github.com/sangyaahub/pi-marg/security/advisories/new
+    about: Report vulnerabilities privately.

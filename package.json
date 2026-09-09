@@ -1,0 +1,84 @@
+{
+  "name": "pi-marg",
+  "version": "1.0.0",
+  "description": "A governed, model-routed development path for Pi Agent and Oh My Pi.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Sangyaa",
+  "homepage": "https://github.com/sangyaahub/pi-marg#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sangyaahub/pi-marg.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sangyaahub/pi-marg/issues"
+  },
+  "keywords": [
+    "pi-package",
+    "omp-plugin",
+    "pi-agent",
+    "oh-my-pi",
+    "agent-workflow",
+    "model-routing",
+    "approval-gates",
+    "multi-agent",
+    "sangyaa"
+  ],
+  "files": [
+    ".mcp.json",
+    ".omp-plugin",
+    "BRAND.md",
+    "CHANGELOG.md",
+    "CODE_OF_CONDUCT.md",
+    "CONTRIBUTING.md",
+    "LICENSE",
+    "README.md",
+    "MODEL-SETUP.md",
+    "PUBLISHING.md",
+    "SECURITY.md",
+    "SUPPORT.md",
+    "adapters",
+    "agents",
+    "assets",
+    "commands",
+    "core",
+    "rules",
+    "scripts",
+    "skills"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "bun test tests",
+    "validate": "./scripts/validate.sh"
+  },
+  "pi": {
+    "extensions": [
+      "./adapters/pi/extensions/approval-guard.ts",
+      "./adapters/pi/extensions/model-router.ts",
+      "./adapters/pi/extensions/runtime-capabilities.ts",
+      "./adapters/pi/extensions/workflow-bootstrap.ts"
+    ],
+    "skills": [
+      "./skills"
+    ],
+    "prompts": [
+      "./adapters/pi/prompts"
+    ],
+    "image": "https://raw.githubusercontent.com/sangyaahub/pi-marg/main/assets/pi-marg-banner.png"
+  },
+  "omp": {
+    "extensions": [
+      "./adapters/omp/extensions/approval-guard.ts",
+      "./adapters/omp/extensions/model-router.ts",
+      "./adapters/omp/extensions/runtime-capabilities.ts"
+    ]
+  },
+  "peerDependencies": {
+    "typebox": "*"
+  }
+}

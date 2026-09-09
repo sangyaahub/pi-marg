@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PiMarg banner</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 1280px; height: 640px; overflow: hidden; }
+    body {
+      color: #161614;
+      background: #FAFAF7;
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .canvas {
+      position: relative;
+      display: grid;
+      grid-template-columns: 1.25fr .75fr;
+      width: 100%;
+      height: 100%;
+      padding: 70px 76px 60px;
+      isolation: isolate;
+    }
+    .canvas::before {
+      position: absolute;
+      inset: 0;
+      z-index: -2;
+      background:
+        radial-gradient(circle at 91% 14%, rgba(107, 155, 250, .27), transparent 28%),
+        linear-gradient(125deg, #FAFAF7 0 58%, #E8EFFE 58% 100%);
+      content: "";
+    }
+    .copy { display: flex; flex-direction: column; align-items: flex-start; }
+    .eyebrow { color: #0338A8; font-size: 18px; font-weight: 750; letter-spacing: .16em; text-transform: uppercase; }
+    h1 { margin: 34px 0 0; color: #021E5C; font-size: 112px; line-height: .9; letter-spacing: -.075em; }
+    .meaning { margin: 18px 0 0; color: #C27B1A; font-family: Georgia, serif; font-size: 25px; font-style: italic; }
+    .tagline { max-width: 650px; margin: 26px 0 0; color: #3A3A37; font-size: 29px; line-height: 1.25; letter-spacing: -.025em; }
+    .chips { display: flex; gap: 10px; margin-top: auto; }
+    .chip { padding: 8px 13px; border: 1px solid #C8D5F3; border-radius: 999px; color: #0338A8; background: #fff; font-size: 14px; font-weight: 700; }
+    .route { position: relative; display: grid; place-items: center; }
+    .path {
+      position: absolute;
+      width: 236px;
+      height: 440px;
+      border: 22px solid #0451F7;
+      border-top: 0;
+      border-bottom: 0;
+      border-radius: 118px;
+      opacity: .98;
+    }
+    .path::before, .path::after {
+      position: absolute;
+      left: -22px;
+      width: 236px;
+      height: 118px;
+      border: 22px solid #0451F7;
+      content: "";
+    }
+    .path::before { top: -18px; border-bottom: 0; border-radius: 118px 118px 0 0; }
+    .path::after { bottom: -18px; border-top: 0; border-radius: 0 0 118px 118px; }
+    .nodes { position: relative; z-index: 2; display: grid; gap: 23px; }
+    .node {
+      display: grid;
+      grid-template-columns: 48px 1fr;
+      align-items: center;
+      width: 250px;
+      min-height: 64px;
+      overflow: hidden;
+      border: 1px solid rgba(3, 56, 168, .18);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, .95);
+      box-shadow: 0 12px 30px rgba(2, 30, 92, .12);
+    }
+    .node b { display: grid; height: 100%; place-items: center; color: #fff; background: #0338A8; font-size: 21px; }
+    .node span { padding: 0 14px; color: #021E5C; font-size: 17px; font-weight: 730; }
+    .node.review b { background: #C27B1A; }
+    .byline { position: absolute; right: 64px; bottom: 32px; display: flex; align-items: center; gap: 10px; color: #0338A8; font-size: 14px; font-weight: 720; }
+    .byline img { width: 15px; height: 27px; object-fit: contain; }
+  </style>
+</head>
+<body>
+  <main class="canvas" aria-label="PiMarg by Sangyaa">
+    <section class="copy">
+      <div class="eyebrow">Pi + OMP agent workflow</div>
+      <h1>PiMarg</h1>
+      <p class="meaning">मार्ग · a clear path</p>
+      <p class="tagline">A governed development path from first thought to verified code.</p>
+      <div class="chips">
+        <span class="chip">Live model routing</span>
+        <span class="chip">Independent review</span>
+        <span class="chip">Approval gates</span>
+      </div>
+    </section>
+    <section class="route" aria-label="Discover, review, build, review">
+      <div class="path" aria-hidden="true"></div>
+      <div class="nodes">
+        <div class="node"><b>A</b><span>Discover</span></div>
+        <div class="node review"><b>C</b><span>Review the plan</span></div>
+        <div class="node"><b>B</b><span>Build + verify</span></div>
+        <div class="node review"><b>D</b><span>Review the code</span></div>
+      </div>
+    </section>
+    <div class="byline"><img src="brand/sangyaa-mark.png" alt=""> An open-source project by Sangyaa</div>
+  </main>
+</body>
+</html>
