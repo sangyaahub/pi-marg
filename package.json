@@ -1,5 +1,5 @@
 {
-  "name": "pi-marg",
+  "name": "@sangyaahub/pi-marg",
   "version": "1.0.0",
   "description": "A governed, model-routed development path for Pi Agent and Oh My Pi.",
   "type": "module",

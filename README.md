@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://github.com/sangyaahub/pi-marg/releases"><img alt="Version 1.0.0" src="https://img.shields.io/badge/version-1.0.0-0451F7"></a>
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-C27B1A"></a>
-  <a href="https://pi.dev/packages/pi-marg"><img alt="Pi package" src="https://img.shields.io/badge/Pi-package-0338A8"></a>
+  <a href="https://pi.dev/packages?name=pi-marg"><img alt="Pi package" src="https://img.shields.io/badge/Pi-package-0338A8"></a>
   <a href="https://omp.sh"><img alt="Oh My Pi plugin" src="https://img.shields.io/badge/OMP-plugin-021E5C"></a>
 </p>
 
@@ -95,7 +95,7 @@ Install both only when you use both CLIs:
 Install PiMarg from the Pi package catalog/npm:
 
 ```bash
-pi install npm:pi-marg
+pi install npm:@sangyaahub/pi-marg
 ```
 
 Or install Pi and OMP directly from this GitHub repository:
