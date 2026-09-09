@@ -16,7 +16,7 @@ bun -e '
   import { existsSync } from "node:fs";
   const packageJson = await Bun.file("package.json").json();
   const marketplace = await Bun.file(".omp-plugin/marketplace.json").json();
-  if (packageJson.name !== "pi-marg") throw new Error("Unexpected package name");
+  if (packageJson.name !== "@sangyaahub/pi-marg") throw new Error("Unexpected package name");
   if (packageJson.version !== "1.0.0") throw new Error("package.json must be v1.0.0");
   if (packageJson.license !== "MIT") throw new Error("package.json must declare MIT");
   if (packageJson.author !== "Sangyaa") throw new Error("Unexpected package author");
@@ -24,7 +24,7 @@ bun -e '
   if (marketplace.name !== "pi-marg-marketplace") throw new Error("Unexpected marketplace name");
   if (marketplace.metadata?.version !== packageJson.version) throw new Error("Marketplace version mismatch");
   if (marketplace.plugins?.[0]?.version !== packageJson.version) throw new Error("Plugin version mismatch");
-  if (marketplace.plugins?.[0]?.name !== packageJson.name) throw new Error("Plugin/package name mismatch");
+  if (marketplace.plugins?.[0]?.name !== packageJson.name.split("/").at(-1)) throw new Error("Plugin/package name mismatch");
   if (marketplace.plugins?.[0]?.source !== "./") throw new Error("OMP local source must begin with ./");
   for (const relativePath of [
     ...(packageJson.pi?.extensions ?? []),

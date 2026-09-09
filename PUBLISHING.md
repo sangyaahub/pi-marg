@@ -24,7 +24,7 @@ Create an annotated `v<version>` tag and GitHub release only after the matching 
 
 ## Pi package catalog
 
-Pi's package catalog discovers public npm packages carrying the `pi-package` keyword. The unscoped npm name `pi-marg` was available when v1.0 was prepared, but npm ownership is established only by the first successful publish.
+Pi's package catalog discovers public npm packages carrying the `pi-package` keyword. PiMarg is published under SangyaaHub's npm scope as `@sangyaahub/pi-marg`.
 
 First publication requires an npm-authenticated maintainer:
 
@@ -33,10 +33,10 @@ npm whoami
 npm publish --access public
 ```
 
-After npm indexes the package, verify `https://pi.dev/packages/pi-marg` and:
+After npm indexes the package, search for `@sangyaahub/pi-marg` at `https://pi.dev/packages` and verify:
 
 ```bash
-pi install npm:pi-marg
+pi install npm:@sangyaahub/pi-marg
 ```
 
 For later releases, prefer npm trusted publishing with GitHub OIDC and provenance instead of a long-lived repository token. Never commit npm credentials.
