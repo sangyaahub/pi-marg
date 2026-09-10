@@ -48,7 +48,6 @@ function hasExternalDevin(pi: any): boolean {
 function commandPrompt(args: string): string {
   const trimmed = args.trim();
   if (trimmed.toLowerCase() === "start") return "";
-  if (trimmed.toLowerCase().startsWith("start ")) return trimmed.slice(6).trim();
   return trimmed;
 }
 

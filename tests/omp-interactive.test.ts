@@ -160,7 +160,7 @@ describe("OMP interactive PiMarg command", () => {
       ui: { notify() {} },
     });
 
-    expect(messages).toEqual(["Start PiMarg for this request:\naudit log cleanup"]);
+    expect(messages).toEqual(["Start PiMarg for this request:\nstart audit log cleanup"]);
     expect(entries).toHaveLength(0);
   });
 
