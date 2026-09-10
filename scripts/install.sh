@@ -71,4 +71,4 @@ if [[ "${runtime}" == "omp" || "${runtime}" == "both" ]]; then
   omp plugin install --scope user pi-marg@pi-marg-marketplace
 fi
 
-echo "PiMarg v1.0.0 installed for ${runtime}. Start a fresh runtime session, then run /auto-runtime status."
+echo "PiMarg v1.0.1 installed for ${runtime}. Start a fresh runtime session, then run /pi-marg."

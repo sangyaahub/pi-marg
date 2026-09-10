@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/sangyaahub/pi-marg/releases"><img alt="Version 1.0.0" src="https://img.shields.io/badge/version-1.0.0-0451F7"></a>
+  <a href="https://github.com/sangyaahub/pi-marg/releases"><img alt="Version 1.0.1" src="https://img.shields.io/badge/version-1.0.1-0451F7"></a>
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-C27B1A"></a>
   <a href="https://pi.dev/packages?name=pi-marg"><img alt="Pi package" src="https://img.shields.io/badge/Pi-package-0338A8"></a>
   <a href="https://omp.sh"><img alt="Oh My Pi plugin" src="https://img.shields.io/badge/OMP-plugin-021E5C"></a>
@@ -11,7 +11,7 @@
 
 # PiMarg
 
-**Version 1.0.0 · MIT licensed · Pi Agent + Oh My Pi · by [Sangyaa](https://sangyaa.co)**
+**Version 1.0.1 · MIT licensed · Pi Agent + Oh My Pi · by [Sangyaa](https://sangyaa.co)**
 
 PiMarg turns an ordinary prompt into a governed development path. It identifies the work boundary, selects one engineering method, discovers the models and tools the active runtime really provides, separates thinking from execution, records evidence, and stops before protected actions.
 
@@ -42,7 +42,7 @@ The same model-selection and approval logic lives in `core/`. Runtime-specific c
 - Confirms job/client versus personal work; job/client mode suppresses Sangyaa branding by default.
 - Routes seven work types: idea, new feature, improvement, proactive bug fix, security, repository analysis, and business/sales analysis.
 - Uses one primary Compound Engineering, Superpowers, GSD Core, or automatically selected workflow spine.
-- Discovers current authenticated model selectors instead of pinning dated model names.
+- Shows every current authenticated and enabled model, ranking the best fit for each stage first instead of pinning dated model names.
 - Enforces that A and C use different underlying models, and B and D use different underlying models.
 - Uses CodeGraph for repository architecture and impact when available, with LSP/AST or repository-native tools for exact code questions.
 - Adds conditional testing, debugger, browser/desktop, security, Advisor, task, and memory routes only when detected.
@@ -62,7 +62,7 @@ The same model-selection and approval logic lives in `core/`. Runtime-specific c
 | Advisor, checkpoint, security scan, Hindsight | Extension/fallback when detected | Native capability when enabled |
 | Parallel agents | Only when a compatible task extension exists | Native `task`/workflow routes when available |
 
-Tested locally against Pi Agent `0.85.1` and OMP `18.1.14`. Optional features are always capability-detected, so their absence produces a recorded fallback rather than a false success claim.
+Tested locally against Pi Agent `0.85.1` and OMP `18.1.15`. Optional features are always capability-detected, so their absence produces a recorded fallback rather than a false success claim.
 
 ## Try the demo
 
@@ -98,6 +98,12 @@ Install PiMarg from the Pi package catalog/npm:
 pi install npm:@sangyaahub/pi-marg
 ```
 
+Install the global OMP launcher:
+
+```bash
+npm install --global @sangyaahub/pi-marg
+```
+
 Or install Pi and OMP directly from this GitHub repository:
 
 ```bash
@@ -105,6 +111,8 @@ pi install https://github.com/sangyaahub/pi-marg
 omp plugin marketplace add sangyaahub/pi-marg
 omp plugin install --scope user pi-marg@pi-marg-marketplace
 ```
+
+The npm command launches OMP; the OMP plugin installation supplies PiMarg's extensions, skills, commands, and rules. Install both when you want to start the complete workflow with `pi-marg` from any repository.
 
 ## Configure models
 
@@ -114,15 +122,26 @@ Authenticate providers using the active runtime's normal login flow, then run:
 /auto-models choose
 ```
 
-The router builds choices from the live authenticated registry. It does not promise that a subscription route is free or unlimited. See [MODEL-SETUP.md](MODEL-SETUP.md).
+The router shows every model in the live authenticated and enabled registry. Stage-appropriate choices appear first and all other enabled choices remain selectable. It does not promise that a subscription route is free or unlimited. See [MODEL-SETUP.md](MODEL-SETUP.md).
 
 ## Start a workflow
 
-Type a normal request or invoke:
+From a terminal in the repository you want to work on, run either:
+
+```bash
+pi-marg start
+pi-marg "add CSV export to this repository"
+```
+
+`pi-marg start` opens OMP and asks for the work prompt. Supplying a prompt starts the same guided flow immediately. Inside an existing OMP session, invoke:
 
 ```text
+/pi-marg
+/pi-marg add CSV export to this repository
 /auto add CSV export to this repository
 ```
+
+The native picker asks for work boundary, work type, workflow skill, and every model required by that work type. It shows only models reported as authenticated and enabled by OMP, with recommended stage fits first.
 
 Useful entry points:
 

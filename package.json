@@ -1,6 +1,6 @@
 {
   "name": "@sangyaahub/pi-marg",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A governed, model-routed development path for Pi Agent and Oh My Pi.",
   "type": "module",
   "license": "MIT",
@@ -24,6 +24,9 @@
     "multi-agent",
     "sangyaa"
   ],
+  "bin": {
+    "pi-marg": "./bin/pi-marg.js"
+  },
   "files": [
     ".mcp.json",
     ".omp-plugin",
@@ -40,6 +43,7 @@
     "adapters",
     "agents",
     "assets",
+    "bin",
     "commands",
     "core",
     "rules",

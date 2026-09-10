@@ -1,5 +1,5 @@
 export type AutoStage = "A" | "B" | "C" | "D";
-export type CandidateTier = "frontier" | "execution";
+export type CandidateTier = "frontier" | "execution" | "general";
 export type RuntimeName = "OMP" | "Pi";
 
 export interface ModelLike {
@@ -25,6 +25,7 @@ export interface ModelCandidate {
     | "included-cursor"
     | "devin-swe"
     | "included-devin"
+    | "runtime-available"
     | "devin-external";
   access: "runtime-model" | "external-agent";
   billingNote?: string;
@@ -130,7 +131,7 @@ export function normalizeModelIdentity(value: string): string {
   return normalized;
 }
 
-export function classifyModel(model: ModelLike): ModelCandidate | undefined {
+export function classifyModel(model: ModelLike): ModelCandidate {
   const selector = `${model.provider}/${model.id}`;
   const haystack = `${model.provider} ${model.id} ${model.name ?? ""}`;
 
@@ -156,17 +157,20 @@ export function classifyModel(model: ModelLike): ModelCandidate | undefined {
       billingNote: "The runtime reports zero metered token cost; Devin plan quotas or pool limits may still apply.",
     };
   }
-  return undefined;
+  return candidate(model, selector, "runtime-available", "general");
 }
 
 export function buildModelCatalog(models: ModelLike[], hasExternalDevin: boolean) {
-  const candidates = models
-    .map(classifyModel)
-    .filter((item): item is ModelCandidate => Boolean(item))
-    .sort(compareCandidates);
+  const candidates = [...new Map(models.map((model) => {
+    const item = classifyModel(model);
+    return [item.selector, item] as const;
+  })).values()];
+
+  const frontier = [...candidates].sort((left, right) => compareForStage(left, right, "frontier"));
+  const execution = [...candidates].sort((left, right) => compareForStage(left, right, "execution"));
 
   if (hasExternalDevin) {
-    candidates.push({
+    execution.push({
       selector: "devin/external-session",
       identity: "devin-external-session",
       label: "Devin external session",
@@ -176,11 +180,15 @@ export function buildModelCatalog(models: ModelLike[], hasExternalDevin: boolean
       access: "external-agent",
       billingNote: "Uses Devin quota rather than a runtime model slot; session creation requires post-web approval.",
     });
+    execution.sort((left, right) => compareForStage(left, right, "execution"));
   }
 
-  const frontier = candidates.filter((item) => item.tier === "frontier");
-  const execution = candidates.filter((item) => item.tier === "execution");
-  return { A: frontier, B: execution, C: frontier, D: execution } satisfies Record<AutoStage, ModelCandidate[]>;
+  return {
+    A: frontier,
+    B: execution,
+    C: frontier,
+    D: execution,
+  } satisfies Record<AutoStage, ModelCandidate[]>;
 }
 
 export function validateDistinctSelection(
@@ -328,6 +336,16 @@ function compareCandidates(left: ModelCandidate, right: ModelCandidate): number 
   return left.selector.localeCompare(right.selector);
 }
 
+function compareForStage(
+  left: ModelCandidate,
+  right: ModelCandidate,
+  preferredTier: Exclude<CandidateTier, "general">,
+): number {
+  const leftRank = left.tier === preferredTier ? 0 : left.tier === "general" ? 1 : 2;
+  const rightRank = right.tier === preferredTier ? 0 : right.tier === "general" ? 1 : 2;
+  return leftRank - rightRank || compareCandidates(left, right);
+}
+
 function toolResult(text: string, details: unknown, isError = false) {
   return {
     content: [{ type: "text" as const, text }],
@@ -338,11 +356,15 @@ function toolResult(text: string, details: unknown, isError = false) {
 
 function catalogNotes(runtimeName: RuntimeName, catalog: Record<AutoStage, ModelCandidate[]>): string[] {
   const notes = [
-    `The catalog is built from ${runtimeName}'s authenticated model registry at call time; selectors are never guessed or pinned.`,
-    "A and C use frontier candidates. B and D use execution candidates, including eligible Cursor or Devin routes when the runtime exposes them.",
+    `The catalog shows every model in ${runtimeName}'s authenticated, enabled registry at call time; selectors are never guessed or pinned.`,
+    "A and C rank frontier fits first. B and D rank execution fits first. Every live model remains selectable for every stage.",
     "Zero-metered describes the runtime's reported token price; it does not promise unlimited subscription usage.",
   ];
-  if (catalog.A.length === 0) notes.push("No frontier matches are authenticated. Connect a provider, then refresh.");
-  if (catalog.B.length === 0) notes.push("No execution matches are authenticated and no external Devin tool was detected.");
+  if (!catalog.A.some((candidate) => candidate.tier === "frontier")) {
+    notes.push("No preferred frontier matches are authenticated; choose another available model or connect a provider.");
+  }
+  if (!catalog.B.some((candidate) => candidate.tier === "execution")) {
+    notes.push("No preferred execution matches are authenticated and no external Devin tool was detected; choose another available model.");
+  }
   return notes;
 }
