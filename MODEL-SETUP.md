@@ -39,19 +39,21 @@ The Pi adapter reads `ctx.scopedModels` when the session has a model allowlist; 
 Use OMP `/login`, then inspect `/model` or:
 
 ```bash
-omp models list
+omp models
 ```
 
-The OMP adapter reads `ctx.models.list()` and activates an exact catalog entry with `pi.setModel()`.
+The OMP adapter reads `ctx.models.list()`, which supplies authenticated and enabled models, and activates an exact catalog entry with `pi.setModel()`.
 
 ## Selection workflow
 
-1. Run `/auto-models choose`.
-2. Request `action: catalog` with the confirmed work type.
-3. Select A and C from frontier candidates.
-4. Select B and D when implementation is required.
+1. Run `/pi-marg` for the full native intake, or `/auto-models choose` to change saved models.
+2. Confirm the work type so PiMarg knows which stages are required.
+3. Select A and C when discovery/review is required; recommended frontier choices appear first.
+4. Select B and D when implementation is required; recommended execution choices appear first.
 5. Resolve any A=C or B=D identity conflict before continuing.
 6. Activate the saved selector immediately before its stage.
+
+Every authenticated and enabled runtime model remains selectable at every required stage. The preferred classes above control ranking, not visibility.
 
 The normalized identity check treats the same underlying model reached through different providers as the same candidate when their identifiers normalize equally.
 

@@ -17,10 +17,13 @@ bun -e '
   const packageJson = await Bun.file("package.json").json();
   const marketplace = await Bun.file(".omp-plugin/marketplace.json").json();
   if (packageJson.name !== "@sangyaahub/pi-marg") throw new Error("Unexpected package name");
-  if (packageJson.version !== "1.0.0") throw new Error("package.json must be v1.0.0");
+  if (packageJson.version !== "1.0.1") throw new Error("package.json must be v1.0.1");
   if (packageJson.license !== "MIT") throw new Error("package.json must declare MIT");
   if (packageJson.author !== "Sangyaa") throw new Error("Unexpected package author");
   if (!packageJson.keywords?.includes("pi-package")) throw new Error("Pi catalog keyword is missing");
+  if (packageJson.bin?.["pi-marg"] !== "./bin/pi-marg.js") throw new Error("PiMarg CLI bin mapping is missing");
+  if (!packageJson.files?.includes("bin")) throw new Error("PiMarg CLI is excluded from npm files");
+  if (!existsSync("bin/pi-marg.js")) throw new Error("PiMarg CLI entry point is missing");
   if (marketplace.name !== "pi-marg-marketplace") throw new Error("Unexpected marketplace name");
   if (marketplace.metadata?.version !== packageJson.version) throw new Error("Marketplace version mismatch");
   if (marketplace.plugins?.[0]?.version !== packageJson.version) throw new Error("Plugin version mismatch");

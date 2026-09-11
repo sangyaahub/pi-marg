@@ -5,7 +5,7 @@ This checklist is for maintainers. Public mutations remain subject to PiMarg's o
 ## Before a release
 
 1. Update `package.json`, `.omp-plugin/marketplace.json`, and `CHANGELOG.md` to the same version.
-2. Run `./scripts/validate.sh`, `bun test tests`, and `npm pack --dry-run`.
+2. Run `./scripts/validate.sh`, `bun test tests`, `node bin/pi-marg.js --version`, and `npm pack --dry-run`.
 3. Smoke-test the package root with the supported Pi and OMP versions.
 4. Inspect the packed file list for secrets, generated debris, and missing runtime files.
 

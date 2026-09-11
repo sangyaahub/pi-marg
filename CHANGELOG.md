@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.1 — 2026-09-10
+
+- Added the global `pi-marg start` and `pi-marg "<work prompt>"` OMP launch commands.
+- Added native interactive OMP intake for work boundary, work type, workflow skill, and required A/B/C/D model choices.
+- Changed model pickers to show every authenticated and enabled runtime model while ranking stage-appropriate choices first.
+- Preserved independent-review enforcement: A cannot equal C, and B cannot equal D.
+
 ## 1.0.0 — 2026-09-08
 
 - First PiMarg release for Pi Agent and Oh My Pi.

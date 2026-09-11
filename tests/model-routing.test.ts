@@ -24,7 +24,39 @@ describe("model routing", () => {
     const catalog = buildModelCatalog(models, true);
     expect(catalog.A.map((item) => item.selector)).toContain("anthropic/claude-opus-4.9");
     expect(catalog.B.map((item) => item.selector)).toContain("cursor/composer-2");
-    expect(catalog.B.map((item) => item.selector)).toContain("devin/external-session");
+
+    for (const stage of ["B", "D"] as const) {
+      const executionIndexes = catalog[stage]
+        .map((item, index) => item.tier === "execution" ? index : -1)
+        .filter((index) => index >= 0);
+      const otherIndexes = catalog[stage]
+        .map((item, index) => item.tier !== "execution" ? index : -1)
+        .filter((index) => index >= 0);
+
+      expect(catalog[stage].map((item) => item.selector)).toContain("devin/external-session");
+      expect(executionIndexes.every((executionIndex) => (
+        otherIndexes.every((otherIndex) => executionIndex < otherIndex)
+      ))).toBe(true);
+    }
+  });
+
+  test("shows every live runtime model in every stage while ranking stage fits first", () => {
+    const liveModels: ModelLike[] = [
+      ...models,
+      { provider: "xai-oauth", id: "grok-build", name: "Grok Build" },
+      { provider: "local", id: "custom-model", name: "Custom Model" },
+    ];
+    const catalog = buildModelCatalog(liveModels, false);
+    const liveSelectors = liveModels.map((model) => `${model.provider}/${model.id}`).sort();
+
+    for (const stage of ["A", "B", "C", "D"] as const) {
+      expect(catalog[stage].map((item) => item.selector).sort()).toEqual(liveSelectors);
+    }
+
+    expect(catalog.A[0]?.tier).toBe("frontier");
+    expect(catalog.B[0]?.tier).toBe("execution");
+    expect(catalog.A.map((item) => item.selector)).toContain("local/custom-model");
+    expect(catalog.B.map((item) => item.selector)).toContain("xai-oauth/grok-build");
   });
 
   test("routes the expected stages by work type", () => {
