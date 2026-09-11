@@ -54,7 +54,7 @@ describe("PiMarg CLI", () => {
     const packageJson = await Bun.file(new URL("../package.json", import.meta.url)).json();
     expect(VERSION).toBe("1.0.1");
     expect(VERSION).toBe(packageJson.version);
-    expect(packageJson.bin).toEqual({ "pi-marg": "./bin/pi-marg.js" });
+    expect(packageJson.bin).toEqual({ "pi-marg": "bin/pi-marg.js" });
   });
 
   test("starts interactive intake with no prompt or the start command", () => {
