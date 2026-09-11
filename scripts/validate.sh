@@ -21,7 +21,7 @@ bun -e '
   if (packageJson.license !== "MIT") throw new Error("package.json must declare MIT");
   if (packageJson.author !== "Sangyaa") throw new Error("Unexpected package author");
   if (!packageJson.keywords?.includes("pi-package")) throw new Error("Pi catalog keyword is missing");
-  if (packageJson.bin?.["pi-marg"] !== "./bin/pi-marg.js") throw new Error("PiMarg CLI bin mapping is missing");
+  if (packageJson.bin?.["pi-marg"] !== "bin/pi-marg.js") throw new Error("PiMarg CLI bin mapping is missing");
   if (!packageJson.files?.includes("bin")) throw new Error("PiMarg CLI is excluded from npm files");
   if (!existsSync("bin/pi-marg.js")) throw new Error("PiMarg CLI entry point is missing");
   if (marketplace.name !== "pi-marg-marketplace") throw new Error("Unexpected marketplace name");

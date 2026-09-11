@@ -25,7 +25,7 @@
     "sangyaa"
   ],
   "bin": {
-    "pi-marg": "./bin/pi-marg.js"
+    "pi-marg": "bin/pi-marg.js"
   },
   "files": [
     ".mcp.json",
