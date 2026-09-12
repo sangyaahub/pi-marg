@@ -48,14 +48,32 @@ The OMP adapter reads `ctx.models.list()`, which supplies authenticated and enab
 
 1. Run `/pi-marg` for the full native intake, or `/auto-models choose` to change saved models.
 2. Confirm the work type so PiMarg knows which stages are required.
-3. Select A and C when discovery/review is required; recommended frontier choices appear first.
-4. Select B and D when implementation is required; recommended execution choices appear first.
-5. Resolve any A=C or B=D identity conflict before continuing.
-6. Activate the saved selector immediately before its stage.
+3. For each required stage, choose a **provider** first (numbered `1. …`), then a **model** from that provider (numbered `1. …`). Exact `provider/id` selectors are the selection keys—not display numbers alone.
+4. Select A and C when discovery/review is required; recommended frontier choices appear first within their lists.
+5. Select B and D when implementation is required; recommended execution choices appear first within their lists.
+6. Resolve any A=C or B=D identity conflict before continuing.
+7. Activate the saved selector immediately before its stage.
 
-Every authenticated and enabled runtime model remains selectable at every required stage. The preferred classes above control ranking, not visibility.
+### Tool form (`auto_model_route`)
+
+```text
+# 1) Overview: every provider, no model dump
+auto_model_route action=catalog workType=<n>
+
+# 2) Full model list for one authenticated provider
+auto_model_route action=catalog workType=<n> provider=<provider-name>
+
+# 3) Persist and activate an exact selector
+auto_model_route action=select stage=<A|B|C|D> target=<provider>/<model-id> workType=<n>
+```
+
+Never present a hand-curated subset that omits a logged-in provider. Every authenticated and enabled runtime model remains selectable at every required stage. The preferred classes above control ranking, not visibility.
 
 The normalized identity check treats the same underlying model reached through different providers as the same candidate when their identifiers normalize equally.
+
+### OMP cursor → openai-codex note
+
+On OMP with `@oh-my-pi/pi-coding-agent` 18.1.17, switching from a `cursor` stage to an `openai-codex` stage in the **same** session can fail if prior `cursor-agent` tool ids are replayed (`call_id` longer than 64). PiMarg surfaces this as a catalog advisory when both providers are live. Workaround: start a **fresh session** that does not replay the affected tool history. The durable fix belongs in the harness, not in PiMarg selectors.
 
 ## Devin
 

@@ -18,11 +18,14 @@ Ask one intake stage at a time. A clear user prompt can support a proposed class
 
 ## Stage 1 — work context
 
-Ask first:
+Ask first with numbered options:
 
 > Is this for your job/client, or is it personal work?
+>
+> 1. Job/client
+> 2. Personal
 
-Record exactly one:
+Record exactly one canonical value (`job-client` or `personal`); numbering is presentation-only:
 
 - `job-client`: Do not add Sangyaa branding, name, logo, metadata, footer, or promotional language. Use the employer/client/project brand already in scope.
 - `personal`: Existing project branding wins. Sangyaa branding is opt-in, never automatic.
@@ -58,6 +61,14 @@ Ask:
 
 Call `auto_model_route` with `action: catalog` and the confirmed work type. Present only selectors returned by the tool; do not type a remembered model ID.
 
+Catalog presentation is provider-first:
+
+1. Show **every** authenticated provider as numbered options `1.`, `2.`, … (including Devin when present). Never omit a logged-in provider and never curate down to Claude/Codex/Cursor only.
+2. After the user picks a provider, call `auto_model_route` again with the same work type and `provider=<name>` so the tool lists **every** model for that provider as numbered `1.`, `2.`, …
+3. Ask the user with those numbered labels. If the option UI cannot fit the full list, paste the numbered list into the question text and accept the number or exact selector.
+
+Interactive `/pi-marg` uses the same provider → model two-step with numbered labels.
+
 The four roles are:
 
 - A — thinking/discovery using a current Claude Fable/Opus, OpenAI Astra/Sol, or Grok 4.6-or-newer frontier model.
@@ -67,7 +78,7 @@ The four roles are:
 
 Ask only for stages required by the current work type. Work types 2–3 normally use A → C → B → D. Type 4 uses A → B → D and adds C only for a non-trivial plan. Types 1, 6, and 7 use A → C. Type 5 uses A → C for review and adds B → D when fixes are authorized.
 
-Use `action: select` for each answer. The active adapter saves exact selectors in session state and immediately activates the selected runtime model. Native `devin/swe-*` selectors behave like other models. An external Devin session requires `post-web` approval before creation.
+Use `action: select` for each answer with the **exact selector** string (for example `devin/swe-2`), not the display number alone. The active adapter saves exact selectors in session state and immediately activates the selected runtime model. Native `devin/swe-*` selectors behave like other models. An external Devin session requires `post-web` approval before creation.
 
 ## Stage 5 — native runtime and supporting capabilities
 

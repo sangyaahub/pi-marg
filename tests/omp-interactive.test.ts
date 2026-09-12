@@ -15,8 +15,27 @@ function fakeZod() {
   };
 }
 
+function selectFromOptions(
+  title: string,
+  options: Array<string | { label: string }>,
+  selectedByStage: Record<string, string>,
+) {
+  const labels = options.map((option) => typeof option === "string" ? option : option.label);
+  if (title === "Work boundary") return labels.find((label) => label.includes("Personal"));
+  if (title === "Work type") return labels.find((label) => label.startsWith("2."));
+  if (title === "Workflow skill") return labels.find((label) => label.startsWith("1."));
+  const providerStage = title.match(/Stage ([ABCD]) provider/)?.[1];
+  if (providerStage) {
+    const provider = selectedByStage[providerStage]!.split("/")[0]!;
+    return labels.find((label) => label.includes(`${provider} (`));
+  }
+  const stage = title.match(/Stage ([ABCD]) model/)?.[1];
+  if (stage) return labels.find((label) => label.includes(selectedByStage[stage]!));
+  return undefined;
+}
+
 describe("OMP interactive PiMarg command", () => {
-  test("collects intake choices and every required model through native selectors", async () => {
+  test("collects intake choices and every required model through numbered provider then model selectors", async () => {
     let command: any;
     const entries: Array<{ type: string; data: any }> = [];
     const messages: string[] = [];
@@ -26,13 +45,16 @@ describe("OMP interactive PiMarg command", () => {
       { provider: "openai-codex", id: "gpt-astra", name: "GPT Astra" },
       { provider: "anthropic", id: "claude-sonnet-4.8", name: "Claude Sonnet 4.8" },
       { provider: "openai-codex", id: "gpt-terra", name: "GPT Terra" },
+      { provider: "cursor", id: "composer-2", name: "Composer 2", cost: { input: 0, output: 0 } },
+      { provider: "devin", id: "swe-2", name: "SWE-2" },
+      { provider: "devin", id: "claude-opus-4.9", name: "Claude Opus 4.9" },
       { provider: "local", id: "custom-model", name: "Custom Model" },
     ];
     const selectedByStage: Record<string, string> = {
       A: "openai-codex/gpt-astra",
-      C: "anthropic/claude-opus-4.9",
-      B: "openai-codex/gpt-terra",
-      D: "anthropic/claude-sonnet-4.8",
+      C: "devin/claude-opus-4.9",
+      B: "devin/swe-2",
+      D: "cursor/composer-2",
     };
 
     const pi: any = {
@@ -58,12 +80,7 @@ describe("OMP interactive PiMarg command", () => {
         async select(title: string, options: Array<string | { label: string }>) {
           const labels = options.map((option) => typeof option === "string" ? option : option.label);
           optionSets.set(title, labels);
-          if (title === "Work boundary") return labels.find((label) => label.startsWith("Personal"));
-          if (title === "Work type") return labels.find((label) => label.startsWith("2."));
-          if (title === "Workflow skill") return labels.find((label) => label.startsWith("1."));
-          const stage = title.match(/Stage ([ABCD])/)?.[1];
-          if (stage) return labels.find((label) => label.includes(selectedByStage[stage]!));
-          return undefined;
+          return selectFromOptions(title, options, selectedByStage);
         },
         notify() {},
       },
@@ -71,18 +88,138 @@ describe("OMP interactive PiMarg command", () => {
 
     await command.handler("add CSV export", ctx);
 
+    expect(optionSets.get("Work boundary")).toEqual(["1. Job/client", "2. Personal"]);
     for (const stage of ["A", "B", "C", "D"]) {
-      const labels = optionSets.get(`Stage ${stage} model`)!;
-      expect(labels.some((label) => label.includes("local/custom-model"))).toBe(true);
+      const providers = optionSets.get(`Stage ${stage} provider`)!;
+      expect(providers.every((label, index) => label.startsWith(`${index + 1}. `))).toBe(true);
+      expect(providers.some((label) => label.includes("devin ("))).toBe(true);
+      expect(providers.some((label) => label.includes("anthropic ("))).toBe(true);
+      expect(providers.some((label) => label.includes("cursor ("))).toBe(true);
+      expect(providers.some((label) => label.includes("openai-codex ("))).toBe(true);
+      expect(providers.some((label) => label.includes("local ("))).toBe(true);
+
+      const modelsForStage = optionSets.get(`Stage ${stage} model`)!;
+      expect(modelsForStage.every((label, index) => label.startsWith(`${index + 1}. `))).toBe(true);
     }
+    expect(optionSets.get("Stage A model")?.some((label) => label.includes("openai-codex/gpt-astra"))).toBe(true);
     expect(optionSets.get("Stage C model")?.some((label) => label.includes("openai-codex/gpt-astra"))).toBe(false);
+    expect(optionSets.get("Stage C model")?.every((label) => label.includes("devin/"))).toBe(true);
+    expect(optionSets.get("Stage B model")?.some((label) => label.includes("devin/swe-2"))).toBe(true);
     expect(entries).toHaveLength(1);
     expect(entries[0]?.data.workType).toBe(2);
     expect(entries[0]?.data.selections.A.selector).toBe("openai-codex/gpt-astra");
+    expect(entries[0]?.data.selections.C.selector).toBe("devin/claude-opus-4.9");
+    expect(entries[0]?.data.selections.B.selector).toBe("devin/swe-2");
+    expect(entries[0]?.data.selections.D.selector).toBe("cursor/composer-2");
     expect(messages).toHaveLength(1);
     expect(messages[0]).toContain("add CSV export");
-    expect(messages[0]).toContain("Personal");
+    expect(messages[0]).toContain("Boundary: Personal");
     expect(messages[0]).toContain("Compound Engineering");
+    expect(messages[0]).toContain("devin/swe-2");
+  });
+
+  test("cancels at provider step without persisting partial model state", async () => {
+    let command: any;
+    const entries: Array<{ type: string; data: any }> = [];
+    const messages: string[] = [];
+    const selectedTitles: string[] = [];
+    const models = [
+      { provider: "anthropic", id: "claude-opus-4.9", name: "Claude Opus 4.9" },
+      { provider: "openai-codex", id: "gpt-astra", name: "GPT Astra" },
+    ];
+    const pi: any = {
+      zod: fakeZod(),
+      on() {},
+      registerTool() {},
+      registerCommand(name: string, definition: any) {
+        if (name === "pi-marg") command = definition;
+      },
+      getAllTools: () => [],
+      appendEntry(type: string, data: any) { entries.push({ type, data }); },
+      sendUserMessage(message: string) { messages.push(message); },
+      setModel: async () => true,
+    };
+    modelRouter(pi);
+
+    await command.handler("cancel provider pick", {
+      hasUI: true,
+      models: { list: () => models },
+      ui: {
+        async input() { return undefined; },
+        async select(title: string, options: Array<string | { label: string }>) {
+          selectedTitles.push(title);
+          const labels = options.map((option) => typeof option === "string" ? option : option.label);
+          if (title === "Work boundary") return labels[1];
+          if (title === "Work type") return labels.find((label) => label.startsWith("2."));
+          if (title === "Workflow skill") return labels[0];
+          if (title === "Stage A provider") return undefined;
+          return labels[0];
+        },
+        notify() {},
+      },
+    });
+
+    expect(selectedTitles).toEqual([
+      "Work boundary",
+      "Work type",
+      "Workflow skill",
+      "Stage A provider",
+    ]);
+    expect(entries).toHaveLength(0);
+    expect(messages).toHaveLength(0);
+  });
+
+  test("cancels at model step without persisting partial model state", async () => {
+    let command: any;
+    const entries: Array<{ type: string; data: any }> = [];
+    const messages: string[] = [];
+    const selectedTitles: string[] = [];
+    const models = [
+      { provider: "anthropic", id: "claude-opus-4.9", name: "Claude Opus 4.9" },
+      { provider: "openai-codex", id: "gpt-astra", name: "GPT Astra" },
+    ];
+    const pi: any = {
+      zod: fakeZod(),
+      on() {},
+      registerTool() {},
+      registerCommand(name: string, definition: any) {
+        if (name === "pi-marg") command = definition;
+      },
+      getAllTools: () => [],
+      appendEntry(type: string, data: any) { entries.push({ type, data }); },
+      sendUserMessage(message: string) { messages.push(message); },
+      setModel: async () => true,
+    };
+    modelRouter(pi);
+
+    await command.handler("cancel model pick", {
+      hasUI: true,
+      models: { list: () => models },
+      ui: {
+        async input() { return undefined; },
+        async select(title: string, options: Array<string | { label: string }>) {
+          selectedTitles.push(title);
+          const labels = options.map((option) => typeof option === "string" ? option : option.label);
+          if (title === "Work boundary") return labels[1];
+          if (title === "Work type") return labels.find((label) => label.startsWith("2."));
+          if (title === "Workflow skill") return labels[0];
+          if (title === "Stage A provider") return labels.find((label) => label.includes("anthropic ("));
+          if (title === "Stage A model") return undefined;
+          return labels[0];
+        },
+        notify() {},
+      },
+    });
+
+    expect(selectedTitles).toEqual([
+      "Work boundary",
+      "Work type",
+      "Workflow skill",
+      "Stage A provider",
+      "Stage A model",
+    ]);
+    expect(entries).toHaveLength(0);
+    expect(messages).toHaveLength(0);
   });
 
   test("stops before a paired-stage selector when aliases share one model identity", async () => {
@@ -120,6 +257,7 @@ describe("OMP interactive PiMarg command", () => {
           if (title === "Work boundary") return labels[0];
           if (title === "Work type") return labels.find((label) => label.startsWith("1."));
           if (title === "Workflow skill") return labels[0];
+          if (title === "Stage A provider") return labels[0];
           if (title === "Stage A model") return labels[0];
           return undefined;
         },
@@ -129,6 +267,7 @@ describe("OMP interactive PiMarg command", () => {
 
     expect(selectedTitles).toContain("Stage A model");
     expect(selectedTitles).not.toContain("Stage C model");
+    expect(selectedTitles).not.toContain("Stage C provider");
     expect(notifications).toEqual([{
       message: "Paired stages require two distinct authenticated model identities. Configure another model, then run /pi-marg again.",
       level: "error",

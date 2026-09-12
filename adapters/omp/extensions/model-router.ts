@@ -2,10 +2,14 @@ import {
   MODEL_STATE_TYPE,
   STAGES,
   buildModelCatalog,
+  candidatesForProvider,
   emptyModelRouteState,
   executeModelRoute,
+  matchNumberedOption,
+  numberedOptionLabel,
   requiredStagesForWorkType,
   restoreModelRouteState,
+  uniqueProviders,
   type AutoStage,
   type ModelCandidate,
   type ModelLike,
@@ -14,7 +18,7 @@ import {
 } from "../../../core/model-routing";
 import { normalizeCapabilityNames } from "../../../core/runtime-capabilities";
 
-const WORK_BOUNDARIES = ["Job/client", "Personal"] as const;
+const WORK_BOUNDARIES = ["1. Job/client", "2. Personal"] as const;
 
 const WORK_TYPES = [
   "1. New idea or development from scratch",
@@ -77,15 +81,33 @@ async function chooseModel(
     );
     return undefined;
   }
-  const options = eligible.map((candidate) => ({
-    label: optionLabel(candidate),
+
+  const providers = uniqueProviders(eligible);
+  const providerOptions = providers.map((name, index) => ({
+    label: numberedOptionLabel(index, `${name} (${candidatesForProvider(eligible, name).length})`),
+    description: `All authenticated ${name} models for ${STAGE_PURPOSE[stage]}`,
+  }));
+  const providerAnswer = await ctx.ui.select(`Stage ${stage} provider`, providerOptions, {
+    selectionMarker: "radio",
+    helpText: `${providers.length} providers · ${eligible.length} models · ${STAGE_PURPOSE[stage]}`,
+  });
+  const provider = matchNumberedOption(
+    providerAnswer,
+    providers,
+    (name) => `${name} (${candidatesForProvider(eligible, name).length})`,
+  );
+  if (!provider) return undefined;
+
+  const providerModels = candidatesForProvider(eligible, provider);
+  const modelOptions = providerModels.map((candidate, index) => ({
+    label: numberedOptionLabel(index, optionLabel(candidate)),
     description: optionDescription(stage, candidate),
   }));
-  const answer = await ctx.ui.select(`Stage ${stage} model`, options, {
+  const answer = await ctx.ui.select(`Stage ${stage} model`, modelOptions, {
     selectionMarker: "radio",
-    helpText: `${eligible.length} authenticated and enabled choices · ${STAGE_PURPOSE[stage]}`,
+    helpText: `${providerModels.length} ${provider} choices · ${STAGE_PURPOSE[stage]}`,
   });
-  return eligible.find((candidate) => optionLabel(candidate) === answer);
+  return matchNumberedOption(answer, providerModels, optionLabel);
 }
 
 function selectedState(
@@ -164,7 +186,8 @@ export default function modelRouter(pi: any) {
       const boundaryLabel = await ctx.ui.select("Work boundary", [...WORK_BOUNDARIES], {
         selectionMarker: "radio",
       });
-      if (!WORK_BOUNDARIES.includes(boundaryLabel)) return;
+      const boundary = matchNumberedOption(boundaryLabel, ["Job/client", "Personal"], (item) => item);
+      if (!boundary) return;
 
       const workTypeLabel = await ctx.ui.select("Work type", [...WORK_TYPES], { selectionMarker: "radio" });
       const workType = Number.parseInt(workTypeLabel?.match(/^([1-7])\./)?.[1] ?? "", 10);
@@ -189,7 +212,7 @@ export default function modelRouter(pi: any) {
       const nextState = selectedState(workType, selected);
       state = nextState;
       pi.appendEntry(MODEL_STATE_TYPE, nextState);
-      pi.sendUserMessage(intakeMessage(request, boundaryLabel, workTypeLabel!, skillMode, selected));
+      pi.sendUserMessage(intakeMessage(request, boundary, workTypeLabel!, skillMode, selected));
     },
   });
 
@@ -202,6 +225,7 @@ export default function modelRouter(pi: any) {
       stage: z.enum(STAGES).optional(),
       target: z.string().optional(),
       workType: z.number().optional(),
+      provider: z.string().optional(),
     }),
     async execute(_toolCallId: string, params: ModelRouteParams, _signal: unknown, _onUpdate: unknown, ctx: any) {
       const models = ctx.models.list() as ModelLike[];

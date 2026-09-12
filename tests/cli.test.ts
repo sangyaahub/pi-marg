@@ -52,7 +52,7 @@ process.exit(Number(process.env.PIMARG_STUB_EXIT_CODE || 0));
 describe("PiMarg CLI", () => {
   test("stays synchronized with the npm package manifest", async () => {
     const packageJson = await Bun.file(new URL("../package.json", import.meta.url)).json();
-    expect(VERSION).toBe("1.0.1");
+    expect(VERSION).toBe("1.0.2");
     expect(VERSION).toBe(packageJson.version);
     expect(packageJson.bin).toEqual({ "pi-marg": "./bin/pi-marg.js" });
   });

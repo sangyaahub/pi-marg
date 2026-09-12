@@ -4,6 +4,8 @@
 
 `auto_model_route` builds its catalog from the active runtime every time it is called: Pi uses scoped or authenticated available models, while OMP uses `ctx.models.list()`. Exact versions come from that live registry, not this document.
 
+Catalog text is compact and provider-grouped. Call `action: catalog` first to list every provider with counts, then call again with `provider=<name>` to list every model for that provider as numbered options. Both OMP and Pi adapters accept the optional `provider` parameter. Never present a hand-curated Claude/Codex/Cursor subset when other authenticated providers (including Devin) are in the catalog.
+
 | Stage | Purpose | Eligible live groups | Normal agent and tools |
 |---|---|---|---|
 | A | Thinking/discovery | Claude Fable/Opus; OpenAI Astra/Sol; current Grok 4.6-or-newer | strategy skill; detected CodeGraph/LSP/AST tools, web for current facts; no implementation writes |
