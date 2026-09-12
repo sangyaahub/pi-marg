@@ -44,6 +44,7 @@ export default function modelRouter(pi: any) {
       stage: Type.Optional(Type.Union([Type.Literal("A"), Type.Literal("B"), Type.Literal("C"), Type.Literal("D")])),
       target: Type.Optional(Type.String()),
       workType: Type.Optional(Type.Number()),
+      provider: Type.Optional(Type.String()),
     }),
     async execute(_toolCallId: string, params: ModelRouteParams, _signal: unknown, _onUpdate: unknown, ctx: any) {
       const models = availableModels(ctx);

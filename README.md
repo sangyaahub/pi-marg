@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/sangyaahub/pi-marg/releases"><img alt="Version 1.0.1" src="https://img.shields.io/badge/version-1.0.1-0451F7"></a>
+  <a href="https://github.com/sangyaahub/pi-marg/releases"><img alt="Version 1.0.2" src="https://img.shields.io/badge/version-1.0.2-0451F7"></a>
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-C27B1A"></a>
   <a href="https://pi.dev/packages?name=pi-marg"><img alt="Pi package" src="https://img.shields.io/badge/Pi-package-0338A8"></a>
   <a href="https://omp.sh"><img alt="Oh My Pi plugin" src="https://img.shields.io/badge/OMP-plugin-021E5C"></a>
@@ -11,7 +11,7 @@
 
 # PiMarg
 
-**Version 1.0.1 · MIT licensed · Pi Agent + Oh My Pi · by [Sangyaa](https://sangyaa.co)**
+**Version 1.0.2 · MIT licensed · Pi Agent + Oh My Pi · by [Sangyaa](https://sangyaa.co)**
 
 PiMarg turns an ordinary prompt into a governed development path. It identifies the work boundary, selects one engineering method, discovers the models and tools the active runtime really provides, separates thinking from execution, records evidence, and stops before protected actions.
 

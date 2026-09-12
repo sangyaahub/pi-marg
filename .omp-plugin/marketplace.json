@@ -7,14 +7,14 @@
   },
   "metadata": {
     "description": "PiMarg — a governed development path for Pi Agent and Oh My Pi.",
-    "version": "1.0.1"
+    "version": "1.0.2"
   },
   "plugins": [
     {
       "name": "pi-marg",
       "description": "Intent-led development workflow with live A/B/C/D routing, capability detection, verification, and approval gates.",
       "source": "./",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "author": {
         "name": "Sangyaa",
         "email": "contact@sangyaa.co"

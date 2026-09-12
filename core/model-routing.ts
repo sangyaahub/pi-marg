@@ -46,6 +46,7 @@ export interface ModelRouteParams {
   stage?: AutoStage;
   target?: string;
   workType?: number;
+  provider?: string;
 }
 
 export interface ModelRoutePort {
@@ -191,6 +192,106 @@ export function buildModelCatalog(models: ModelLike[], hasExternalDevin: boolean
   } satisfies Record<AutoStage, ModelCandidate[]>;
 }
 
+export function numberedOptionLabel(index: number, text: string): string {
+  return `${index + 1}. ${text}`;
+}
+
+export function matchNumberedOption<T>(
+  answer: string | undefined,
+  items: readonly T[],
+  labelOf: (item: T) => string,
+): T | undefined {
+  if (!answer) return undefined;
+  return items.find((item, index) => numberedOptionLabel(index, labelOf(item)) === answer);
+}
+
+export function uniqueProviders(candidates: readonly ModelCandidate[]): string[] {
+  return [...new Set(candidates.map((candidate) => candidate.provider))].sort((left, right) => left.localeCompare(right));
+}
+
+export function candidatesForProvider(
+  candidates: readonly ModelCandidate[],
+  provider: string,
+): ModelCandidate[] {
+  return candidates.filter((candidate) => candidate.provider === provider);
+}
+
+export function formatCatalogPresentation(
+  runtimeName: RuntimeName,
+  catalog: Record<AutoStage, ModelCandidate[]>,
+  requiredStages: AutoStage[],
+  providerFilter?: string,
+) {
+  const notes = catalogNotes(runtimeName, catalog);
+  const stages: Record<string, {
+    providers: Array<{ index: number; name: string; count: number }>;
+    providerFilter: string | null;
+    count: number;
+    options: Array<{
+      index: number;
+      selector: string;
+      label: string;
+      provider: string;
+      tier: CandidateTier;
+      choice: ModelCandidate["choice"];
+    }>;
+  }> = {};
+  const lines: string[] = [
+    `${runtimeName} model catalog`,
+    `Required stages: ${requiredStages.join(", ")}`,
+    "",
+  ];
+
+  for (const stage of requiredStages) {
+    const all = catalog[stage];
+    const providers = uniqueProviders(all).map((name, index) => ({
+      index: index + 1,
+      name,
+      count: candidatesForProvider(all, name).length,
+    }));
+    const shown = providerFilter ? candidatesForProvider(all, providerFilter) : [];
+    const options = shown.map((candidate, index) => ({
+      index: index + 1,
+      selector: candidate.selector,
+      label: candidate.label,
+      provider: candidate.provider,
+      tier: candidate.tier,
+      choice: candidate.choice,
+    }));
+    stages[stage] = {
+      providers,
+      providerFilter: providerFilter ?? null,
+      count: providerFilter ? shown.length : all.length,
+      options,
+    };
+
+    lines.push(`## Stage ${stage} (${all.length} models across ${providers.length} providers)`);
+    lines.push("Providers:");
+    for (const provider of providers) {
+      const marker = providerFilter === provider.name ? " ← selected" : "";
+      lines.push(`  ${provider.index}. ${provider.name} (${provider.count})${marker}`);
+    }
+    if (!providerFilter) {
+      lines.push("Call catalog again with provider=<name> to list every model for that provider.");
+    } else {
+      lines.push(`Models for ${providerFilter} (${shown.length}):`);
+      for (const option of options) {
+        lines.push(`  ${option.index}. ${option.label} — ${option.selector} [${option.tier}]`);
+      }
+    }
+    lines.push("");
+  }
+
+  for (const note of notes) lines.push(`- ${note}`);
+  lines.push("- Present every provider as 1,2,… then every model for the chosen provider as 1,2,… Never omit a logged-in provider.");
+  lines.push("- Select with action=select using the exact selector string.");
+
+  return {
+    text: lines.join("\n"),
+    presentation: { runtime: runtimeName, requiredStages, stages, notes },
+  };
+}
+
 export function validateDistinctSelection(
   state: ModelRouteState,
   stage: AutoStage,
@@ -225,12 +326,30 @@ export async function executeModelRoute(
   if (params.action === "catalog") {
     const workType = Number(params.workType);
     const requiredStages = Number.isInteger(workType) ? requiredStagesForWorkType(workType) : STAGES;
+    const providerFilter = typeof params.provider === "string" && params.provider.trim() ? params.provider.trim() : undefined;
+    if (providerFilter) {
+      const known = STAGES.some((stage) => catalog[stage].some((candidate) => candidate.provider === providerFilter));
+      if (!known) {
+        return {
+          state: currentState,
+          response: toolResult(
+            `Provider ${providerFilter} is not in the live authenticated catalog. Refresh catalog without a provider filter.`,
+            { runtime: port.runtimeName, requiredStages, catalog, state: currentState },
+            true,
+          ),
+        };
+      }
+    }
+    const formatted = formatCatalogPresentation(port.runtimeName, catalog, requiredStages, providerFilter);
     return {
       state: currentState,
-      response: toolResult(
-        JSON.stringify({ runtime: port.runtimeName, requiredStages, catalog, notes: catalogNotes(port.runtimeName, catalog) }, null, 2),
-        { runtime: port.runtimeName, requiredStages, catalog, state: currentState },
-      ),
+      response: toolResult(formatted.text, {
+        runtime: port.runtimeName,
+        requiredStages,
+        catalog,
+        presentation: formatted.presentation,
+        state: currentState,
+      }),
     };
   }
 
@@ -354,6 +473,10 @@ function toolResult(text: string, details: unknown, isError = false) {
   };
 }
 
+function catalogHasProvider(catalog: Record<AutoStage, ModelCandidate[]>, provider: string): boolean {
+  return STAGES.some((stage) => catalog[stage].some((candidate) => candidate.provider === provider));
+}
+
 function catalogNotes(runtimeName: RuntimeName, catalog: Record<AutoStage, ModelCandidate[]>): string[] {
   const notes = [
     `The catalog shows every model in ${runtimeName}'s authenticated, enabled registry at call time; selectors are never guessed or pinned.`,
@@ -365,6 +488,15 @@ function catalogNotes(runtimeName: RuntimeName, catalog: Record<AutoStage, Model
   }
   if (!catalog.B.some((candidate) => candidate.tier === "execution")) {
     notes.push("No preferred execution matches are authenticated and no external Devin tool was detected; choose another available model.");
+  }
+  if (
+    runtimeName === "OMP"
+    && catalogHasProvider(catalog, "cursor")
+    && catalogHasProvider(catalog, "openai-codex")
+  ) {
+    notes.push(
+      "OMP compatibility warning (@oh-my-pi/pi-coding-agent 18.1.17): mid-session switches from cursor to openai-codex can reject tool call_id values longer than 64 characters when prior cursor-agent history is replayed. Start a fresh session that does not replay the affected tool history; branching alone is insufficient if that history is retained. This is a harness limitation, not a PiMarg model-routing failure.",
+    );
   }
   return notes;
 }

@@ -17,7 +17,7 @@ bun -e '
   const packageJson = await Bun.file("package.json").json();
   const marketplace = await Bun.file(".omp-plugin/marketplace.json").json();
   if (packageJson.name !== "@sangyaahub/pi-marg") throw new Error("Unexpected package name");
-  if (packageJson.version !== "1.0.1") throw new Error("package.json must be v1.0.1");
+  if (packageJson.version !== "1.0.2") throw new Error("package.json must be v1.0.2");
   if (packageJson.license !== "MIT") throw new Error("package.json must declare MIT");
   if (packageJson.author !== "Sangyaa") throw new Error("Unexpected package author");
   if (!packageJson.keywords?.includes("pi-package")) throw new Error("Pi catalog keyword is missing");

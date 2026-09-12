@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.2 — 2026-09-12
+
+- Changed live catalog presentation to a provider-first numbered two-step: list every authenticated provider, then every model for the chosen provider.
+- Added optional `provider` filter on `auto_model_route` catalog so agents can request one provider's full model list without truncating giant catalogs.
+- Documented an OMP catalog advisory when both `cursor` and `openai-codex` are live: mid-session switches can hit a harness `call_id` max-length 64 rejection (tracked upstream in `@oh-my-pi/pi-coding-agent`); recover with a fresh session that does not replay the affected tool history.
+
 ## 1.0.1 — 2026-09-10
 
 - Added the global `pi-marg start` and `pi-marg "<work prompt>"` OMP launch commands.
