@@ -89,6 +89,12 @@ describe("OMP interactive PiMarg command", () => {
     await command.handler("add CSV export", ctx);
 
     expect(optionSets.get("Work boundary")).toEqual(["1. Job/client", "2. Personal"]);
+    expect([...optionSets.keys()].filter((title) => title.startsWith("Stage "))).toEqual([
+      "Stage A provider", "Stage A model",
+      "Stage B provider", "Stage B model",
+      "Stage C provider", "Stage C model",
+      "Stage D provider", "Stage D model",
+    ]);
     for (const stage of ["A", "B", "C", "D"]) {
       const providers = optionSets.get(`Stage ${stage} provider`)!;
       expect(providers.every((label, index) => label.startsWith(`${index + 1}. `))).toBe(true);
@@ -341,7 +347,7 @@ describe("OMP interactive PiMarg command", () => {
 
     expect(selectedTitles).toEqual(["Work boundary", "Work type", "Workflow skill"]);
     expect(notifications).toEqual([{
-      message: "No authenticated and enabled OMP models were found. Configure a provider, then run /pi-marg again.",
+      message: "No authenticated and enabled OMP models were found. Set up any provider subscription with /login, verify with `omp models` or /model, then run /pi-marg again. PiMarg picks up whatever models you configure in OMP; see MODEL-SETUP.md.",
       level: "error",
     }]);
     expect(entries).toHaveLength(0);

@@ -63,7 +63,9 @@ Call `auto_runtime_status` during intake. Follow [native-omp-runtime.md](native-
 - Security: detected `security_scan` when available, otherwise repository-native dependency audit, secret scan, SAST rules, configuration review, and source-to-sink inspection. Validate findings before changing code.
 - Current business/market facts: web research with source links; keep external posting disabled until approved.
 
-## Provider recommendation for the user's accounts
+## Provider recommendation (optional ranking only)
+
+These names are soft ranking hints. They are never required. PiMarg always picks up the live authenticated catalog for whoever is using it.
 
 - Cursor Composer or a zero-metered Cursor route: economical B/D work when present in the live catalog.
 - Claude Fable/Opus: A/C product thinking, architecture, specification, and cross-family review.
@@ -73,4 +75,4 @@ Call `auto_runtime_status` during intake. Follow [native-omp-runtime.md](native-
 - Latest matching Grok 4.6-or-newer model: A/C independent frontier analysis or current web/social context.
 - Native Devin SWE: B/D when exposed by the runtime. External Devin: bounded delegation with acceptance criteria and a quota limit.
 
-Use Pi or OMP's own authentication and model UI as the authority for what the account can actually access.
+Use Pi or OMP's own authentication and model UI as the authority for what the account can actually access. If the catalog is empty, promote subscription/provider setup (`/login` on OMP, or Pi credentials) before continuing. Present required stages in ascending A/B/C/D order.

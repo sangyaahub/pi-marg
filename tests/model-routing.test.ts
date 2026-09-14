@@ -63,10 +63,37 @@ describe("model routing", () => {
     expect(catalog.B.map((item) => item.selector)).toContain("xai-oauth/grok-build");
   });
 
-  test("routes the expected stages by work type", () => {
-    expect(requiredStagesForWorkType(2)).toEqual(["A", "C", "B", "D"]);
+  test("routes the expected stages by work type in ascending A/B/C/D order", () => {
+    expect(requiredStagesForWorkType(2)).toEqual(["A", "B", "C", "D"]);
+    expect(requiredStagesForWorkType(3)).toEqual(["A", "B", "C", "D"]);
     expect(requiredStagesForWorkType(4)).toEqual(["A", "B", "D"]);
     expect(requiredStagesForWorkType(7)).toEqual(["A", "C"]);
+  });
+
+  test("presents required stage options in ascending A/B/C/D order", () => {
+    const catalog = buildModelCatalog(models, false);
+    const formatted = formatCatalogPresentation("OMP", catalog, ["A", "C", "B", "D"]);
+    expect(formatted.text).toContain("Required stages: A, B, C, D");
+    const stageHeaders = [...formatted.text.matchAll(/^## Stage ([ABCD])/gm)].map((match) => match[1]);
+    expect(stageHeaders).toEqual(["A", "B", "C", "D"]);
+  });
+
+  test("promotes subscription setup when the live catalog is empty", async () => {
+    const result = await executeModelRoute(emptyModelRouteState(), {
+      action: "catalog",
+      workType: 3,
+    }, {
+      runtimeName: "OMP",
+      models: [],
+      hasExternalDevin: false,
+      activate: async () => true,
+      persist() {},
+    });
+    expect(result.response.isError).toBe(true);
+    const text = result.response.content[0]?.text ?? "";
+    expect(text).toContain("No authenticated");
+    expect(text.toLowerCase()).toMatch(/subscription|\/login|provider/);
+    expect(text).toContain("omp models");
   });
 
   test("normalizes aliases before enforcing independent reviewers", () => {

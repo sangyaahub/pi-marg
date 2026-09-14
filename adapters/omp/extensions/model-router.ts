@@ -3,6 +3,7 @@ import {
   STAGES,
   buildModelCatalog,
   candidatesForProvider,
+  emptyCatalogSetupMessage,
   emptyModelRouteState,
   executeModelRoute,
   matchNumberedOption,
@@ -198,7 +199,7 @@ export default function modelRouter(pi: any) {
 
       const liveModels = ctx.models.list() as ModelLike[];
       if (liveModels.length === 0) {
-        ctx.ui.notify("No authenticated and enabled OMP models were found. Configure a provider, then run /pi-marg again.", "error");
+        ctx.ui.notify(emptyCatalogSetupMessage("OMP"), "error");
         return;
       }
       const catalog = buildModelCatalog(liveModels, hasExternalDevin(pi));

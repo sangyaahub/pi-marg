@@ -90,7 +90,7 @@ export function requiredStagesForWorkType(workType: number): AutoStage[] {
   switch (workType) {
     case 2:
     case 3:
-      return ["A", "C", "B", "D"];
+      return ["A", "B", "C", "D"];
     case 4:
       return ["A", "B", "D"];
     case 1:
@@ -101,6 +101,25 @@ export function requiredStagesForWorkType(workType: number): AutoStage[] {
     default:
       return [];
   }
+}
+
+export function ascendingStages(stages: readonly AutoStage[]): AutoStage[] {
+  return STAGES.filter((stage) => stages.includes(stage));
+}
+
+export function emptyCatalogSetupMessage(runtimeName: RuntimeName): string {
+  if (runtimeName === "OMP") {
+    return [
+      "No authenticated and enabled OMP models were found.",
+      "Set up any provider subscription with /login, verify with `omp models` or /model, then run /pi-marg again.",
+      "PiMarg picks up whatever models you configure in OMP; see MODEL-SETUP.md.",
+    ].join(" ");
+  }
+  return [
+    "No authenticated and available Pi models were found.",
+    "Configure any provider subscription or API credentials, verify with `pi --list-models`, then retry.",
+    "PiMarg picks up whatever models you configure in Pi; see MODEL-SETUP.md.",
+  ].join(" ");
 }
 
 export function normalizeModelIdentity(value: string): string {
@@ -223,6 +242,7 @@ export function formatCatalogPresentation(
   providerFilter?: string,
 ) {
   const notes = catalogNotes(runtimeName, catalog);
+  const orderedStages = ascendingStages(requiredStages);
   const stages: Record<string, {
     providers: Array<{ index: number; name: string; count: number }>;
     providerFilter: string | null;
@@ -238,11 +258,11 @@ export function formatCatalogPresentation(
   }> = {};
   const lines: string[] = [
     `${runtimeName} model catalog`,
-    `Required stages: ${requiredStages.join(", ")}`,
+    `Required stages: ${orderedStages.join(", ")}`,
     "",
   ];
 
-  for (const stage of requiredStages) {
+  for (const stage of orderedStages) {
     const all = catalog[stage];
     const providers = uniqueProviders(all).map((name, index) => ({
       index: index + 1,
@@ -288,7 +308,7 @@ export function formatCatalogPresentation(
 
   return {
     text: lines.join("\n"),
-    presentation: { runtime: runtimeName, requiredStages, stages, notes },
+    presentation: { runtime: runtimeName, requiredStages: orderedStages, stages, notes },
   };
 }
 
@@ -324,6 +344,16 @@ export async function executeModelRoute(
   const catalog = buildModelCatalog(port.models, port.hasExternalDevin);
 
   if (params.action === "catalog") {
+    if (port.models.length === 0) {
+      return {
+        state: currentState,
+        response: toolResult(
+          emptyCatalogSetupMessage(port.runtimeName),
+          { runtime: port.runtimeName, catalog, state: currentState },
+          true,
+        ),
+      };
+    }
     const workType = Number(params.workType);
     const requiredStages = Number.isInteger(workType) ? requiredStagesForWorkType(workType) : STAGES;
     const providerFilter = typeof params.provider === "string" && params.provider.trim() ? params.provider.trim() : undefined;
@@ -345,7 +375,7 @@ export async function executeModelRoute(
       state: currentState,
       response: toolResult(formatted.text, {
         runtime: port.runtimeName,
-        requiredStages,
+        requiredStages: formatted.presentation.requiredStages,
         catalog,
         presentation: formatted.presentation,
         state: currentState,
@@ -479,8 +509,8 @@ function catalogHasProvider(catalog: Record<AutoStage, ModelCandidate[]>, provid
 
 function catalogNotes(runtimeName: RuntimeName, catalog: Record<AutoStage, ModelCandidate[]>): string[] {
   const notes = [
-    `The catalog shows every model in ${runtimeName}'s authenticated, enabled registry at call time; selectors are never guessed or pinned.`,
-    "A and C rank frontier fits first. B and D rank execution fits first. Every live model remains selectable for every stage.",
+    `The catalog shows every model in ${runtimeName}'s authenticated, enabled registry at call time; selectors are never guessed, pinned, or limited to a maintainer's subscriptions.`,
+    "A and C rank recognizable frontier fits first when present. B and D rank recognizable execution fits first when present. Every live model remains selectable for every stage.",
     "Zero-metered describes the runtime's reported token price; it does not promise unlimited subscription usage.",
   ];
   if (!catalog.A.some((candidate) => candidate.tier === "frontier")) {

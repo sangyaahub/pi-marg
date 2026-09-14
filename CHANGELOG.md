@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.3 — 2026-09-14
+
+- Made model routing explicitly model-agnostic: live OMP/Pi authenticated catalogs are the only source of truth, with soft preferred-class ranking that never requires a maintainer's subscriptions.
+- Promotes provider/subscription setup when the live catalog is empty (`/login` + `omp models` on OMP; `pi --list-models` on Pi).
+- Shows required A/B/C/D stage options and catalog sections in ascending letter order.
+
 ## 1.0.2 — 2026-09-12
 
 - Changed live catalog presentation to a provider-first numbered two-step: list every authenticated provider, then every model for the chosen provider.
