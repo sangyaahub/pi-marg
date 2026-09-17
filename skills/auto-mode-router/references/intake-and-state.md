@@ -80,6 +80,8 @@ Ask only for stages required by the current work type. Work types 2–3 normally
 
 Use `action: select` for each answer with the **exact selector** string (for example `devin/swe-2`), not the display number alone. The active adapter saves exact selectors in session state and immediately activates the selected runtime model. Native `devin/swe-*` selectors behave like other models. An external Devin session requires `post-web` approval before creation.
 
+After the stage models, choose two distinct authenticated runtime models from the same live catalog: a strong **high** backup and an economical **low** backup. Save them with `action: select_fallback`. Do not choose an external-agent route as a backup because automatic recovery requires `setModel` in the current session.
+
 ## Stage 5 — native runtime and supporting capabilities
 
 Call `auto_runtime_status` before making a recommendation. Distinguish `available`, `enabled`, and `used`; a tool installed but gated off did not run.
@@ -109,6 +111,7 @@ type: 1..7
 mode: 1..4
 spine: compound-engineering | superpowers | gsd | none
 models: A=<selector> B=<selector|n/a> C=<selector> D=<selector|n/a>
+fallbacks: high=<runtime-selector> low=<different-runtime-selector> active=<none|high|low|exhausted>
 runtime: advisor=<off|available|on|unavailable> orchestration=<serial|task|workflowz> checkpoint=<off|available|used>
 addons: ponytail=<off|lite|full> memory=<off|local|hindsight-recall|hindsight-retain> language=<names|none> cost=<economy|balanced|quality>
 verification: tests=<planned|n/a> dap=<planned|n/a> ui=<browser|desktop|n/a> security=<planned|n/a>

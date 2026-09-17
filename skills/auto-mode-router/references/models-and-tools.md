@@ -17,6 +17,15 @@ The extension compares normalized provider-independent identities, so the same m
 
 OMP stage agents and the sequential Pi flow both inherit the model activated in the main session. Before each stage, call `auto_model_route` with `action: activate`; never assume the model remained selected after a manual model change.
 
+## Automatic usage-limit recovery
+
+Save two distinct authenticated runtime models after A/B/C/D selection:
+
+- **high** — the strongest practical recovery model; frontier fits rank first;
+- **low** — an economical recovery model; execution fits rank first.
+
+The runtime waits for its own retry cycle to settle. If a direct model or detected model-execution route (including external Devin and subagents) still ends with a positively identified usage-limit/quota exhaustion error, PiMarg activates high, then low if the active high model itself fails, records and deduplicates failures, notifies the user, and resumes the same stage from the last safe point. It never treats an ordinary implementation error or temporary throttle as quota exhaustion and never re-enters a failed selector within the same activated stage.
+
 Intake and lessons use the runtime's inexpensive/default model when configured. Native `devin/swe-*` entries are ordinary runtime models. A separate external Devin option appears only when a Devin tool is detected and returns a delegation instruction.
 
 ## Cross-family review

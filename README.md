@@ -55,14 +55,14 @@ The same model-selection and approval logic lives in `core/`. Runtime-specific c
 |---|---|---|
 | Ordinary prompts enter the workflow | Pi bootstrap hook | OMP global rule |
 | Shared skills and decision flow | Yes | Yes |
-| Dynamic A/B/C/D model routing | Pi model registry | OMP model registry |
+| Dynamic A/B/C/D model routing + high/low failover | Pi model registry | OMP model registry |
 | Approval guard | Pi event adapter | OMP event adapter |
 | Slash workflow entry points | Pi prompt templates | OMP commands |
 | CodeGraph | CLI/integration when detected | MCP integration when configured |
 | Advisor, checkpoint, security scan, Hindsight | Extension/fallback when detected | Native capability when enabled |
 | Parallel agents | Only when a compatible task extension exists | Native `task`/workflow routes when available |
 
-Tested locally against Pi Agent `0.85.1` and OMP `18.1.15`. Optional features are always capability-detected, so their absence produces a recorded fallback rather than a false success claim.
+Tested locally against Pi Agent `0.85.1` and OMP `18.2.1`. Optional features are always capability-detected, so their absence produces a recorded fallback rather than a false success claim.
 
 ## Try the demo
 
@@ -141,11 +141,25 @@ pi-marg "add CSV export to this repository"
 /auto add CSV export to this repository
 ```
 
-The native picker asks for work boundary, work type, workflow skill, and every model required by that work type. It shows only models reported as authenticated and enabled by OMP, with recommended stage fits first.
+The native picker asks for work boundary, work type, workflow skill, every model required by that work type, then two distinct runtime backups: **high** first and **low** second. Automatic recovery stays disabled until both are saved. It shows only models reported as authenticated and enabled by OMP, with recommended fits first.
+
+```text
+stage model hits quota
+          │
+          ▼
+   OMP/Pi native retry
+          │ still failed
+          ▼
+   high backup ──fails──► low backup
+          │                    │
+          └──── notify + resume┘
+```
+
+PiMarg switches only after a positively identified terminal usage-limit/quota failure (or a settled model-execution tool failure such as external Devin or a subagent); a temporary 429/rate-limit response does not consume a backup. It records and deduplicates each failure, advances from high to low only when the active high model itself fails, notifies the user, and resumes with an instruction to inspect current state before repeating any side effect. If both backups are exhausted, it stops with an actionable request to run the model chooser again.
 
 Useful entry points:
 
-- `/auto-models choose` — refresh A/B/C/D choices.
+- `/auto-models choose` — refresh A/B/C/D choices and the high/low recovery pair.
 - `/auto-runtime status` — show detected capabilities and fallbacks.
 - `/auto-review plan|code` — run the independent review contract.
 - `/auto-status` — show the current ledger and evidence.

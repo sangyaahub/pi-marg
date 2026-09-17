@@ -11,6 +11,9 @@ LIVE AUTHENTICATED CATALOG
    A / C          B / D
      │             │
      └─ different ─┘ within each pair
+            │
+            ▼ quota failure
+   high backup ──► low backup
 ```
 
 If the live catalog is empty, PiMarg stops and promotes provider/subscription setup instead of guessing models.
@@ -56,6 +59,8 @@ The OMP adapter reads `ctx.models.list()`, which supplies authenticated and enab
 6. Select B and D when implementation is required; recommended execution choices appear first within their lists when recognizable, but every live model remains selectable.
 7. Resolve any A=C or B=D identity conflict before continuing.
 8. Activate the saved selector immediately before its stage.
+9. Choose a runtime-only **high backup** (strongest recovery fit) and a distinct runtime-only **low backup** (economical recovery fit). External-agent entries cannot be backups because PiMarg must be able to activate them in the current session.
+10. Automatic recovery becomes active only after both backups are saved. On a positively identified terminal usage-limit failure, PiMarg preserves the stage, waits for the runtime to settle, switches high then low, notifies the user, and resumes from the last safe point. Duplicate events and temporary throttles do not consume another backup.
 
 ### Tool form (`auto_model_route`)
 
@@ -68,6 +73,10 @@ auto_model_route action=catalog workType=<n> provider=<provider-name>
 
 # 3) Persist and activate an exact selector
 auto_model_route action=select stage=<A|B|C|D> target=<provider>/<model-id> workType=<n>
+
+# 4) Persist the automatic recovery pair (does not activate either model yet)
+auto_model_route action=select_fallback fallback=high target=<provider>/<model-id>
+auto_model_route action=select_fallback fallback=low target=<provider>/<model-id>
 ```
 
 Never present a hand-curated subset that omits a logged-in provider. Every authenticated and enabled runtime model remains selectable at every required stage. Soft preferred-class ranking controls order, not visibility.

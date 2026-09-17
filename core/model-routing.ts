@@ -1,4 +1,5 @@
 export type AutoStage = "A" | "B" | "C" | "D";
+export type FallbackLevel = "high" | "low";
 export type CandidateTier = "frontier" | "execution" | "general";
 export type RuntimeName = "OMP" | "Pi";
 
@@ -36,14 +37,27 @@ export interface ModelSelection extends ModelCandidate {
 }
 
 export interface ModelRouteState {
-  version: 1;
+  version: 2;
   workType?: number;
   selections: Partial<Record<AutoStage, ModelSelection>>;
+  fallbacks: Partial<Record<FallbackLevel, ModelSelection>>;
+  activeStage?: AutoStage;
+  activeFallback?: FallbackLevel;
+  exhaustedSelectors?: string[];
+  handledFailureKeys?: string[];
+  lastFailover?: {
+    stage?: AutoStage;
+    failedSelector: string;
+    fallbackLevel: FallbackLevel;
+    activatedSelector: string;
+    switchedAt: string;
+  };
 }
 
 export interface ModelRouteParams {
-  action: "catalog" | "select" | "activate" | "status";
+  action: "catalog" | "select" | "select_fallback" | "activate" | "status";
   stage?: AutoStage;
+  fallback?: FallbackLevel;
   target?: string;
   workType?: number;
   provider?: string;
@@ -63,8 +77,66 @@ export interface ModelRouteExecution {
   response: ReturnType<typeof toolResult>;
 }
 
+export interface AutomaticFailoverExecution {
+  state: ModelRouteState;
+  switched?: {
+    level: FallbackLevel;
+    selection: ModelSelection;
+  };
+  exhausted: boolean;
+  stateChanged: boolean;
+  reusedCurrent?: boolean;
+  ignoredDuplicate?: boolean;
+  persistenceError?: string;
+}
+
+export interface TerminalUsageFailure {
+  role: "assistant";
+  stopReason: "error";
+  errorMessage: string;
+  provider?: string;
+  model?: string;
+  responseId?: string;
+  timestamp?: number;
+}
+
+export interface ToolUsageFailure {
+  selector: string;
+  key: string;
+}
+
 export const MODEL_STATE_TYPE = "co.sangyaa.pi-marg.model-routing.v1";
 export const STAGES: AutoStage[] = ["A", "B", "C", "D"];
+export const FALLBACK_LEVELS: FallbackLevel[] = ["high", "low"];
+
+const USAGE_LIMIT_PATTERNS = [
+  /usage[\s_-]*limit/i,
+  /quota[^\n]{0,40}(?:exceeded|exhausted|reached|depleted|limit)/i,
+  /insufficient[_ -]?quota/i,
+  /monthly\s+usage\s+limit/i,
+  /weekly\s+(?:usage\s+)?limit/i,
+  /available\s+balance[^\n]{0,40}(?:\b0\b|depleted|exhausted|insufficient)/i,
+  /out\s+of\s+(?:budget|credits?)/i,
+  /credits?\s+(?:are\s+)?exhausted/i,
+  /agent\s+compute\s+units?[^\n]{0,40}(?:exhausted|depleted|limit|remaining\s*:?\s*0)/i,
+  /\bACUs?\b[^\n]*(?:exhausted|limit|remaining\s*:?\s*0)/i,
+];
+
+const ERROR_TEXT_KEYS = ["error", "errorMessage", "message", "stderr", "output", "content"];
+const ERROR_CONTAINER_KEYS = ["details", "result"];
+const MAX_ERROR_TEXT_LENGTH = 32_000;
+const MAX_ERROR_NODES = 200;
+const MAX_HANDLED_FAILURE_KEYS = 32;
+const EXACT_MODEL_EXECUTION_TOOLS = new Set([
+  "task",
+  "subagent",
+  "spawn_agent",
+  "run_agent",
+  "agent",
+  "workflowz",
+  "orchestrate",
+  "advisor",
+]);
 
 const FRONTIER_PATTERNS: Array<[ModelCandidate["choice"], RegExp]> = [
   ["claude-frontier", /(?:claude[^\n]*(?:fable|opus)|(?:fable|opus)[^\n]*claude)/i],
@@ -79,7 +151,87 @@ const EXECUTION_PATTERNS: Array<[ModelCandidate["choice"], RegExp]> = [
 ];
 
 export function emptyModelRouteState(): ModelRouteState {
-  return { version: 1, selections: {} };
+  return { version: 2, selections: {}, fallbacks: {} };
+}
+
+export function isFallbackLevel(value: unknown): value is FallbackLevel {
+  return typeof value === "string" && FALLBACK_LEVELS.includes(value as FallbackLevel);
+}
+
+export function isUsageLimitErrorText(value: unknown): boolean {
+  if (typeof value !== "string" || value.trim().length === 0) return false;
+  return USAGE_LIMIT_PATTERNS.some((pattern) => pattern.test(value));
+}
+
+export function hasConfiguredFallback(state: ModelRouteState): boolean {
+  const high = state.fallbacks.high;
+  const low = state.fallbacks.low;
+  return Boolean(
+    high
+    && low
+    && high.access === "runtime-model"
+    && low.access === "runtime-model"
+    && high.identity !== low.identity,
+  );
+}
+
+export function findTerminalUsageLimitFailure(messages: readonly unknown[]): TerminalUsageFailure | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = asRecord(messages[index]);
+    if (message?.role !== "assistant") continue;
+    if (message.stopReason !== "error" || typeof message.errorMessage !== "string") return undefined;
+    if (!isUsageLimitErrorText(message.errorMessage)) return undefined;
+    return {
+      role: "assistant",
+      stopReason: "error",
+      errorMessage: message.errorMessage,
+      ...(typeof message.provider === "string" ? { provider: message.provider } : {}),
+      ...(typeof message.model === "string" ? { model: message.model } : {}),
+      ...(typeof message.responseId === "string" ? { responseId: message.responseId } : {}),
+      ...(typeof message.timestamp === "number" ? { timestamp: message.timestamp } : {}),
+    };
+  }
+  return undefined;
+}
+
+export function failedModelSelector(message: TerminalUsageFailure, current?: ModelLike): string {
+  if (message.provider && message.model) {
+    return `${message.provider}/${message.model}`;
+  }
+  return current?.provider && current?.id ? `${current.provider}/${current.id}` : "unknown-model";
+}
+
+export function modelFailureKey(message: TerminalUsageFailure): string {
+  if (message.responseId) return `model:${message.responseId}`;
+  return `model:${message.provider ?? "unknown"}/${message.model ?? "unknown"}:${message.timestamp ?? "no-time"}:${message.errorMessage}`;
+}
+
+export function modelToolUsageLimitFailure(event: unknown): ToolUsageFailure | undefined {
+  const record = asRecord(event);
+  const toolName = typeof record?.toolName === "string" ? record.toolName : "";
+  if (record?.isError !== true || !isModelExecutionTool(toolName)) return undefined;
+  if (!isUsageLimitErrorText(boundedErrorText(record.result))) return undefined;
+  return {
+    selector: isDevinExecutionTool(toolName) ? "devin/external-session" : `tool/${toolName}`,
+    key: `tool:${typeof record.toolCallId === "string" ? record.toolCallId : `${toolName}:${boundedErrorText(record.result)}`}`,
+  };
+}
+
+export function formatFailoverRecoveryMessage(
+  state: ModelRouteState,
+  failedSelector: string,
+  level: FallbackLevel,
+  target: string,
+  reusedCurrent = false,
+): string {
+  const stage = state.activeStage ? `Stage ${state.activeStage}` : "the active PiMarg stage";
+  return [
+    `[PiMarg auto-failover] ${failedSelector} reached its usage limit.`,
+    reusedCurrent
+      ? `Kept the active ${level} backup: ${target}.`
+      : `Switched to the ${level} backup: ${target}.`,
+    `Resume the current ${stage} work from the last safe point. Inspect existing files, tool results, and external state before repeating any side effect. Do not restart intake or the approved plan.`,
+  ].join("\n");
 }
 
 export function isStage(value: unknown): value is AutoStage {
@@ -211,6 +363,13 @@ export function buildModelCatalog(models: ModelLike[], hasExternalDevin: boolean
   } satisfies Record<AutoStage, ModelCandidate[]>;
 }
 
+export function buildFallbackCatalog(catalog: Record<AutoStage, ModelCandidate[]>) {
+  return {
+    high: catalog.A.filter((candidate) => candidate.access === "runtime-model"),
+    low: catalog.B.filter((candidate) => candidate.access === "runtime-model"),
+  } satisfies Record<FallbackLevel, ModelCandidate[]>;
+}
+
 export function numberedOptionLabel(index: number, text: string): string {
   return `${index + 1}. ${text}`;
 }
@@ -305,6 +464,7 @@ export function formatCatalogPresentation(
   for (const note of notes) lines.push(`- ${note}`);
   lines.push("- Present every provider as 1,2,… then every model for the chosen provider as 1,2,… Never omit a logged-in provider.");
   lines.push("- Select with action=select using the exact selector string.");
+  lines.push("- Also save two distinct runtime-only backups with action=select_fallback: high first, then low.");
 
   return {
     text: lines.join("\n"),
@@ -329,11 +489,136 @@ export function validateDistinctSelection(
 export function restoreModelRouteState(entries: readonly any[]): ModelRouteState {
   let restored = emptyModelRouteState();
   for (const entry of entries) {
-    if (entry?.type === "custom" && entry.customType === MODEL_STATE_TYPE && entry.data?.version === 1) {
-      restored = entry.data as ModelRouteState;
+    if (entry?.type !== "custom" || entry.customType !== MODEL_STATE_TYPE) continue;
+    if (entry.data?.version === 2) {
+      restored = {
+        ...entry.data,
+        version: 2,
+        selections: entry.data.selections ?? {},
+        fallbacks: entry.data.fallbacks ?? {},
+      } as ModelRouteState;
+      continue;
+    }
+    if (entry.data?.version === 1) {
+      restored = {
+        version: 2,
+        workType: entry.data.workType,
+        selections: entry.data.selections ?? {},
+        fallbacks: {},
+      };
     }
   }
   return restored;
+}
+
+export async function executeAutomaticFailover(
+  currentState: ModelRouteState,
+  failedSelector: string,
+  port: ModelRoutePort,
+  failureKey?: string,
+): Promise<AutomaticFailoverExecution> {
+  const failed = failedSelector.trim() || "unknown-model";
+  const handledFailureKeys = currentState.handledFailureKeys ?? [];
+  if (failureKey && handledFailureKeys.includes(failureKey)) {
+    return {
+      state: currentState,
+      exhausted: false,
+      stateChanged: false,
+      ignoredDuplicate: true,
+    };
+  }
+  const nextHandledFailureKeys = failureKey
+    ? [...handledFailureKeys, failureKey].slice(-MAX_HANDLED_FAILURE_KEYS)
+    : handledFailureKeys;
+  const exhausted = new Set(currentState.exhaustedSelectors ?? []);
+  exhausted.add(failed);
+  const activeLevel = currentState.activeFallback;
+  const activeSelection = activeLevel ? currentState.fallbacks[activeLevel] : undefined;
+
+  if (activeLevel && activeSelection && activeSelection.selector !== failed) {
+    const nextState: ModelRouteState = {
+      ...currentState,
+      handledFailureKeys: nextHandledFailureKeys,
+      exhaustedSelectors: [...exhausted],
+    };
+    const persistenceError = persistFailoverState(port, nextState);
+    return {
+      state: nextState,
+      switched: { level: activeLevel, selection: activeSelection },
+      exhausted: false,
+      stateChanged: true,
+      reusedCurrent: true,
+      ...(persistenceError ? { persistenceError } : {}),
+    };
+  }
+
+  const startingIndex = activeLevel ? FALLBACK_LEVELS.indexOf(activeLevel) + 1 : 0;
+
+  for (const level of FALLBACK_LEVELS.slice(startingIndex)) {
+    const selection = currentState.fallbacks[level];
+    if (!selection || selection.access !== "runtime-model" || exhausted.has(selection.selector)) continue;
+    const model = port.models.find((item) => `${item.provider}/${item.id}` === selection.selector);
+    if (!model) {
+      exhausted.add(selection.selector);
+      continue;
+    }
+    let activated: boolean | void;
+    try {
+      activated = await port.activate(model);
+    } catch {
+      exhausted.add(selection.selector);
+      continue;
+    }
+    if (activated === false) {
+      exhausted.add(selection.selector);
+      continue;
+    }
+
+    const nextState: ModelRouteState = {
+      ...currentState,
+      version: 2,
+      activeFallback: level,
+      exhaustedSelectors: [...exhausted],
+      handledFailureKeys: nextHandledFailureKeys,
+      lastFailover: {
+        stage: currentState.activeStage,
+        failedSelector: failed,
+        fallbackLevel: level,
+        activatedSelector: selection.selector,
+        switchedAt: port.now?.() ?? new Date().toISOString(),
+      },
+    };
+    const persistenceError = persistFailoverState(port, nextState);
+    return {
+      state: nextState,
+      switched: { level, selection },
+      exhausted: false,
+      stateChanged: true,
+      ...(persistenceError ? { persistenceError } : {}),
+    };
+  }
+
+  const exhaustedSelectors = [...exhausted];
+  const priorExhausted = new Set(currentState.exhaustedSelectors ?? []);
+  const stateChanged = exhaustedSelectors.length !== priorExhausted.size
+    || exhaustedSelectors.some((selector) => !priorExhausted.has(selector))
+    || nextHandledFailureKeys.length !== handledFailureKeys.length;
+  if (!stateChanged) {
+    return { state: currentState, exhausted: true, stateChanged: false };
+  }
+  const nextState: ModelRouteState = {
+    ...currentState,
+    version: 2,
+    exhaustedSelectors,
+    handledFailureKeys: nextHandledFailureKeys,
+  };
+  const persistenceError = persistFailoverState(port, nextState);
+  return {
+    state: nextState,
+    exhausted: true,
+    stateChanged: true,
+    ...(persistenceError ? { persistenceError } : {}),
+  };
 }
 
 export async function executeModelRoute(
@@ -341,15 +626,15 @@ export async function executeModelRoute(
   params: ModelRouteParams,
   port: ModelRoutePort,
 ): Promise<ModelRouteExecution> {
-  const catalog = buildModelCatalog(port.models, port.hasExternalDevin);
-
   if (params.action === "catalog") {
+    const catalog = buildModelCatalog(port.models, port.hasExternalDevin);
+    const fallbackCatalog = buildFallbackCatalog(catalog);
     if (port.models.length === 0) {
       return {
         state: currentState,
         response: toolResult(
           emptyCatalogSetupMessage(port.runtimeName),
-          { runtime: port.runtimeName, catalog, state: currentState },
+          { runtime: port.runtimeName, catalog, fallbackCatalog, state: currentState },
           true,
         ),
       };
@@ -377,6 +662,7 @@ export async function executeModelRoute(
         runtime: port.runtimeName,
         requiredStages: formatted.presentation.requiredStages,
         catalog,
+        fallbackCatalog,
         presentation: formatted.presentation,
         state: currentState,
       }),
@@ -387,12 +673,59 @@ export async function executeModelRoute(
     return { state: currentState, response: toolResult(JSON.stringify(currentState, null, 2), { state: currentState }) };
   }
 
+  if (params.action === "select_fallback") {
+    const catalog = buildModelCatalog(port.models, port.hasExternalDevin);
+    const fallbackCatalog = buildFallbackCatalog(catalog);
+    if (!isFallbackLevel(params.fallback)) {
+      return { state: currentState, response: toolResult("A fallback level of high or low is required.", { state: currentState }, true) };
+    }
+    if (typeof params.target !== "string") {
+      return { state: currentState, response: toolResult("Select an exact runtime selector from the current catalog.", { fallbackCatalog, state: currentState }, true) };
+    }
+    const level = params.fallback;
+    if (level === "low" && !currentState.fallbacks.high) {
+      return {
+        state: currentState,
+        response: toolResult("Select the high fallback before the low fallback so the recovery order is explicit.", { fallbackCatalog, state: currentState }, true),
+      };
+    }
+    const selected = fallbackCatalog[level].find((item) => item.selector === params.target);
+    if (!selected) {
+      return { state: currentState, response: toolResult(`Target ${params.target} is not an available ${level} fallback choice. Refresh the catalog.`, { fallbackCatalog, state: currentState }, true) };
+    }
+    const otherLevel: FallbackLevel = level === "high" ? "low" : "high";
+    const other = currentState.fallbacks[otherLevel];
+    if (other?.identity === selected.identity) {
+      return { state: currentState, response: toolResult(`The ${level} fallback must use a different model from the ${otherLevel} fallback.`, { fallbackCatalog, state: currentState }, true) };
+    }
+    const nextState: ModelRouteState = {
+      ...currentState,
+      version: 2,
+      fallbacks: {
+        ...currentState.fallbacks,
+        [level]: { ...selected, selectedAt: port.now?.() ?? new Date().toISOString() },
+      },
+      activeFallback: undefined,
+      exhaustedSelectors: [],
+      handledFailureKeys: [],
+    };
+    port.persist(nextState);
+    return {
+      state: nextState,
+      response: toolResult(
+        `Saved ${selected.label} (${selected.selector}) as the ${level} fallback. It will activate only after a usage-limit failure.`,
+        { state: nextState, selected, fallback: level },
+      ),
+    };
+  }
+
   if (!isStage(params.stage)) {
     return { state: currentState, response: toolResult("A valid stage A, B, C, or D is required.", { state: currentState }, true) };
   }
 
   const stage = params.stage;
   if (params.action === "select") {
+    const catalog = buildModelCatalog(port.models, port.hasExternalDevin);
     if (typeof params.target !== "string") {
       return { state: currentState, response: toolResult("Select an exact selector from the current catalog.", { catalog, state: currentState }, true) };
     }
@@ -412,12 +745,17 @@ export async function executeModelRoute(
 
     const workType = Number(params.workType);
     const nextState: ModelRouteState = {
-      version: 1,
+      ...currentState,
+      version: 2,
       workType: Number.isInteger(workType) && workType >= 1 && workType <= 7 ? workType : currentState.workType,
       selections: {
         ...currentState.selections,
         [stage]: { ...selected, selectedAt: port.now?.() ?? new Date().toISOString() },
       },
+      activeStage: stage,
+      activeFallback: undefined,
+      exhaustedSelectors: [],
+      handledFailureKeys: [],
     };
     port.persist(nextState);
     return {
@@ -437,13 +775,113 @@ export async function executeModelRoute(
   }
   if (selected.access === "external-agent") {
     if (!port.hasExternalDevin) return { state: currentState, response: toolResult("Devin was selected but no external Devin tool is available.", { state: currentState }, true) };
-    return { state: currentState, response: toolResult(`Stage ${stage} uses an external Devin session. Delegate only after post-web approval.`, { state: currentState, selected }) };
+    const nextState: ModelRouteState = {
+      ...currentState,
+      activeStage: stage,
+      activeFallback: undefined,
+      exhaustedSelectors: [],
+      handledFailureKeys: [],
+    };
+    port.persist(nextState);
+    return { state: nextState, response: toolResult(`Stage ${stage} uses an external Devin session. Delegate only after post-web approval.`, { state: nextState, selected }) };
   }
   const model = port.models.find((item) => `${item.provider}/${item.id}` === selected.selector);
   if (!model) return { state: currentState, response: toolResult(`Saved model ${selected.selector} is unavailable. Select a replacement.`, { state: currentState }, true) };
   const activated = await port.activate(model);
   if (activated === false) return { state: currentState, response: toolResult(`Could not activate ${selected.selector}; verify provider authentication.`, { state: currentState }, true) };
-  return { state: currentState, response: toolResult(`Activated ${selected.label} (${selected.selector}) for Stage ${stage}.`, { state: currentState, selected }) };
+  const nextState: ModelRouteState = {
+    ...currentState,
+    activeStage: stage,
+    activeFallback: undefined,
+    exhaustedSelectors: [],
+    handledFailureKeys: [],
+  };
+  port.persist(nextState);
+  return { state: nextState, response: toolResult(`Activated ${selected.label} (${selected.selector}) for Stage ${stage}.`, { state: nextState, selected }) };
+}
+
+function boundedErrorText(value: unknown): string {
+  const parts: string[] = [];
+  const seen = new Set<object>();
+  let remaining = MAX_ERROR_TEXT_LENGTH;
+  let nodes = 0;
+
+  const append = (text: string) => {
+    if (remaining <= 0 || text.length === 0) return;
+    const fragment = text.slice(0, remaining);
+    parts.push(fragment);
+    remaining -= fragment.length;
+  };
+
+  const visit = (item: unknown, includePlainText = true) => {
+    if (remaining <= 0 || nodes >= MAX_ERROR_NODES || item == null) return;
+    nodes += 1;
+    if (typeof item === "string") {
+      if (includePlainText) append(item);
+      return;
+    }
+    if (typeof item !== "object") {
+      if (includePlainText) append(String(item));
+      return;
+    }
+    if (seen.has(item)) return;
+    seen.add(item);
+
+    if (item instanceof Error) {
+      append(item.message);
+      return;
+    }
+    if (Array.isArray(item)) {
+      for (const child of item) visit(child, includePlainText);
+      return;
+    }
+
+    const record = item as Record<string, unknown>;
+    if (includePlainText && record.type === "text" && typeof record.text === "string") append(record.text);
+    for (const key of ERROR_TEXT_KEYS) {
+      if (!(key in record)) continue;
+      try {
+        visit(record[key], true);
+      } catch {
+        // Ignore getters that throw while inspecting an external tool error.
+      }
+    }
+    for (const key of ERROR_CONTAINER_KEYS) {
+      if (!(key in record)) continue;
+      try {
+        visit(record[key], false);
+      } catch {
+        // Ignore getters that throw while inspecting an external tool error.
+      }
+    }
+  };
+
+  visit(value);
+  return parts.join("\n");
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null ? value as Record<string, unknown> : undefined;
+}
+
+function isDevinExecutionTool(toolName: string): boolean {
+  return /^(?:mcp__)?devin(?:__|_|$)/i.test(toolName);
+}
+
+function isModelExecutionTool(toolName: string): boolean {
+  const normalized = toolName.toLowerCase();
+  return EXACT_MODEL_EXECUTION_TOOLS.has(normalized)
+    || /^(?:spawn_agent|run_agent|subagent)(?:__|_|$)/.test(normalized)
+    || /^(?:mcp__)?(?:devin|workflowz)(?:__|_|$)/.test(normalized);
+}
+
+function persistFailoverState(port: ModelRoutePort, state: ModelRouteState): string | undefined {
+  try {
+    port.persist(state);
+    return undefined;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
 }
 
 function candidate(

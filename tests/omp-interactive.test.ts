@@ -19,6 +19,7 @@ function selectFromOptions(
   title: string,
   options: Array<string | { label: string }>,
   selectedByStage: Record<string, string>,
+  selectedFallbacks: Record<string, string>,
 ) {
   const labels = options.map((option) => typeof option === "string" ? option : option.label);
   if (title === "Work boundary") return labels.find((label) => label.includes("Personal"));
@@ -31,6 +32,13 @@ function selectFromOptions(
   }
   const stage = title.match(/Stage ([ABCD]) model/)?.[1];
   if (stage) return labels.find((label) => label.includes(selectedByStage[stage]!));
+  const fallbackProvider = title.match(/(High|Low) backup provider/)?.[1]?.toLowerCase();
+  if (fallbackProvider) {
+    const provider = selectedFallbacks[fallbackProvider]!.split("/")[0]!;
+    return labels.find((label) => label.includes(`${provider} (`));
+  }
+  const fallbackModel = title.match(/(High|Low) backup model/)?.[1]?.toLowerCase();
+  if (fallbackModel) return labels.find((label) => label.includes(selectedFallbacks[fallbackModel]!));
   return undefined;
 }
 
@@ -56,6 +64,10 @@ describe("OMP interactive PiMarg command", () => {
       B: "devin/swe-2",
       D: "cursor/composer-2",
     };
+    const selectedFallbacks = {
+      high: "anthropic/claude-opus-4.9",
+      low: "openai-codex/gpt-terra",
+    };
 
     const pi: any = {
       zod: fakeZod(),
@@ -80,7 +92,7 @@ describe("OMP interactive PiMarg command", () => {
         async select(title: string, options: Array<string | { label: string }>) {
           const labels = options.map((option) => typeof option === "string" ? option : option.label);
           optionSets.set(title, labels);
-          return selectFromOptions(title, options, selectedByStage);
+          return selectFromOptions(title, options, selectedByStage, selectedFallbacks);
         },
         notify() {},
       },
@@ -89,11 +101,13 @@ describe("OMP interactive PiMarg command", () => {
     await command.handler("add CSV export", ctx);
 
     expect(optionSets.get("Work boundary")).toEqual(["1. Job/client", "2. Personal"]);
-    expect([...optionSets.keys()].filter((title) => title.startsWith("Stage "))).toEqual([
+    expect([...optionSets.keys()].filter((title) => title.startsWith("Stage ") || title.includes(" backup "))).toEqual([
       "Stage A provider", "Stage A model",
       "Stage B provider", "Stage B model",
       "Stage C provider", "Stage C model",
       "Stage D provider", "Stage D model",
+      "High backup provider", "High backup model",
+      "Low backup provider", "Low backup model",
     ]);
     for (const stage of ["A", "B", "C", "D"]) {
       const providers = optionSets.get(`Stage ${stage} provider`)!;
@@ -117,11 +131,316 @@ describe("OMP interactive PiMarg command", () => {
     expect(entries[0]?.data.selections.C.selector).toBe("devin/claude-opus-4.9");
     expect(entries[0]?.data.selections.B.selector).toBe("devin/swe-2");
     expect(entries[0]?.data.selections.D.selector).toBe("cursor/composer-2");
+    expect(entries[0]?.data.fallbacks.high.selector).toBe("anthropic/claude-opus-4.9");
+    expect(entries[0]?.data.fallbacks.low.selector).toBe("openai-codex/gpt-terra");
     expect(messages).toHaveLength(1);
     expect(messages[0]).toContain("add CSV export");
     expect(messages[0]).toContain("Boundary: Personal");
     expect(messages[0]).toContain("Compound Engineering");
     expect(messages[0]).toContain("devin/swe-2");
+    expect(messages[0]).toContain("High backup: anthropic/claude-opus-4.9");
+    expect(messages[0]).toContain("Low backup: openai-codex/gpt-terra");
+  });
+
+  test("switches and resumes after OMP settles a usage-limit failure", async () => {
+    const handlers = new Map<string, any>();
+    const entries: Array<{ type: string; data: any }> = [];
+    const messages: Array<{ message: string; options: any }> = [];
+    const notifications: Array<{ message: string; level: string }> = [];
+    const activations: string[] = [];
+    const liveModels = [
+      { provider: "devin", id: "swe-2", name: "SWE-2" },
+      { provider: "anthropic", id: "claude-opus-4.9", name: "Claude Opus 4.9" },
+      { provider: "openai-codex", id: "gpt-terra", name: "GPT Terra" },
+    ];
+    const selectedAt = "2026-01-01T00:00:00Z";
+    const pi: any = {
+      zod: fakeZod(),
+      on(name: string, handler: any) { handlers.set(name, handler); },
+      registerTool() {},
+      registerCommand() {},
+      getAllTools: () => [],
+      appendEntry(type: string, data: any) { entries.push({ type, data }); },
+      sendUserMessage(message: string, options: any) { messages.push({ message, options }); },
+      async setModel(model: any) { activations.push(`${model.provider}/${model.id}`); return true; },
+    };
+    modelRouter(pi);
+
+    const ctx: any = {
+      hasUI: true,
+      models: {
+        list: () => liveModels,
+        current: () => liveModels[0],
+      },
+      sessionManager: {
+        getBranch: () => [{
+          type: "custom",
+          customType: "co.sangyaa.pi-marg.model-routing.v1",
+          data: {
+            version: 2,
+            workType: 2,
+            activeStage: "B",
+            selections: {},
+            fallbacks: {
+              high: {
+                selector: "anthropic/claude-opus-4.9",
+                identity: "claude-opus-4.9",
+                label: "Claude Opus 4.9",
+                provider: "anthropic",
+                tier: "frontier",
+                choice: "claude-frontier",
+                access: "runtime-model",
+                selectedAt,
+              },
+              low: {
+                selector: "openai-codex/gpt-terra",
+                identity: "gpt-terra",
+                label: "GPT Terra",
+                provider: "openai-codex",
+                tier: "execution",
+                choice: "openai-mid",
+                access: "runtime-model",
+                selectedAt,
+              },
+            },
+          },
+        }],
+      },
+      ui: {
+        notify(message: string, level: string) { notifications.push({ message, level }); },
+      },
+    };
+    handlers.get("session_start")({}, ctx);
+
+    await handlers.get("agent_end")({
+      willContinue: true,
+      messages: [{ role: "assistant", stopReason: "error", errorMessage: "usage limit reached" }],
+    }, ctx);
+    expect(activations).toEqual([]);
+
+    await handlers.get("agent_end")({
+      willContinue: false,
+      messages: [{
+        role: "assistant",
+        stopReason: "error",
+        errorMessage: "429 rate_limit_exceeded: weekly usage limit reached",
+        provider: "devin",
+        model: "swe-2",
+      }],
+    }, ctx);
+
+    expect(activations).toEqual(["anthropic/claude-opus-4.9"]);
+    expect(entries.at(-1)?.data.activeFallback).toBe("high");
+    expect(notifications.at(-1)?.message).toContain("High backup");
+    expect(messages.at(-1)?.message).toContain("Resume the current Stage B work");
+    expect(messages.at(-1)?.options).toEqual({ deliverAs: "aside" });
+
+    await handlers.get("agent_end")({
+      willContinue: false,
+      messages: [{
+        role: "assistant",
+        stopReason: "error",
+        errorMessage: "quota exhausted",
+        provider: "anthropic",
+        model: "claude-opus-4.9",
+      }],
+    }, ctx);
+    expect(activations).toEqual(["anthropic/claude-opus-4.9", "openai-codex/gpt-terra"]);
+    expect(entries.at(-1)?.data.activeFallback).toBe("low");
+    expect(notifications.at(-1)?.message).toContain("Low backup");
+
+    await handlers.get("agent_end")({
+      willContinue: false,
+      messages: [{
+        role: "assistant",
+        stopReason: "error",
+        errorMessage: "quota exhausted",
+        provider: "openai-codex",
+        model: "gpt-terra",
+      }],
+    }, ctx);
+    expect(notifications.at(-1)?.message).toContain("no configured backup model remains");
+
+    const entryCount = entries.length;
+    const notificationCount = notifications.length;
+    await handlers.get("agent_end")({
+      willContinue: false,
+      messages: [{
+        role: "assistant",
+        stopReason: "error",
+        errorMessage: "quota exhausted",
+        provider: "openai-codex",
+        model: "gpt-terra",
+      }],
+    }, ctx);
+    expect(entries).toHaveLength(entryCount);
+    expect(notifications).toHaveLength(notificationCount);
+  });
+
+  test("recovers an external Devin quota error with the saved high backup", async () => {
+    const handlers = new Map<string, any>();
+    const messages: string[] = [];
+    const activations: string[] = [];
+    const liveModels = [
+      { provider: "anthropic", id: "claude-opus-4.9", name: "Claude Opus 4.9" },
+      { provider: "openai-codex", id: "gpt-terra", name: "GPT Terra" },
+    ];
+    const pi: any = {
+      zod: fakeZod(),
+      on(name: string, handler: any) { handlers.set(name, handler); },
+      registerTool() {},
+      registerCommand() {},
+      getAllTools: () => [{ name: "mcp__devin_run" }],
+      appendEntry() {},
+      sendUserMessage(message: string) { messages.push(message); },
+      async setModel(model: any) { activations.push(`${model.provider}/${model.id}`); return true; },
+    };
+    modelRouter(pi);
+    const ctx: any = {
+      hasUI: true,
+      models: { list: () => liveModels, current: () => liveModels[0] },
+      sessionManager: {
+        getBranch: () => [{
+          type: "custom",
+          customType: "co.sangyaa.pi-marg.model-routing.v1",
+          data: {
+            version: 2,
+            activeStage: "B",
+            selections: {},
+            fallbacks: {
+              high: {
+                selector: "anthropic/claude-opus-4.9",
+                identity: "claude-opus-4.9",
+                label: "Claude Opus 4.9",
+                provider: "anthropic",
+                tier: "frontier",
+                choice: "claude-frontier",
+                access: "runtime-model",
+                selectedAt: "2026-01-01T00:00:00Z",
+              },
+              low: {
+                selector: "openai-codex/gpt-terra",
+                identity: "gpt-terra",
+                label: "GPT Terra",
+                provider: "openai-codex",
+                tier: "execution",
+                choice: "openai-mid",
+                access: "runtime-model",
+                selectedAt: "2026-01-01T00:00:00Z",
+              },
+            },
+          },
+        }],
+      },
+      ui: { notify() {} },
+    };
+    handlers.get("session_start")({}, ctx);
+
+    await handlers.get("tool_execution_end")({
+      isError: true,
+      toolCallId: "devin-call-1",
+      toolName: "mcp__devin_run",
+      result: { content: [{ type: "text", text: "Devin Agent Compute Units exhausted" }] },
+    }, ctx);
+
+    expect(activations).toEqual([]);
+    await handlers.get("agent_end")({
+      willContinue: false,
+      messages: [{ role: "assistant", stopReason: "stop", content: [] }],
+    }, ctx);
+
+    expect(activations).toEqual(["anthropic/claude-opus-4.9"]);
+    expect(messages.at(-1)).toContain("devin/external-session reached its usage limit");
+    expect(messages.at(-1)).toContain("Resume the current Stage B work");
+
+    await handlers.get("tool_execution_end")({
+      isError: true,
+      toolCallId: "task-call-1",
+      toolName: "task",
+      result: { content: [{ type: "text", text: "Subagent quota exhausted" }] },
+    }, ctx);
+    await handlers.get("agent_end")({
+      willContinue: false,
+      messages: [{ role: "assistant", stopReason: "stop", content: [] }],
+    }, ctx);
+    expect(activations).toEqual(["anthropic/claude-opus-4.9"]);
+    expect(messages.at(-1)).toContain("tool/task reached its usage limit");
+    expect(messages.at(-1)).toContain("Kept the active high backup");
+
+    await handlers.get("agent_end")({
+      willContinue: false,
+      messages: [{
+        role: "assistant",
+        stopReason: "error",
+        errorMessage: "monthly usage limit reached",
+        provider: "anthropic",
+        model: "claude-opus-4.9",
+        responseId: "high-response-1",
+      }],
+    }, ctx);
+    expect(activations).toEqual(["anthropic/claude-opus-4.9", "openai-codex/gpt-terra"]);
+  });
+
+  test("resumes on the activated backup and warns when failover state cannot persist", async () => {
+    const handlers = new Map<string, any>();
+    const notifications: string[] = [];
+    const messages: string[] = [];
+    const activations: string[] = [];
+    const liveModels = [
+      { provider: "devin", id: "swe-2", name: "SWE-2" },
+      { provider: "anthropic", id: "claude-opus-4.9", name: "Claude Opus 4.9" },
+      { provider: "openai-codex", id: "gpt-terra", name: "GPT Terra" },
+    ];
+    const pi: any = {
+      zod: fakeZod(),
+      on(name: string, handler: any) { handlers.set(name, handler); },
+      registerTool() {},
+      registerCommand() {},
+      getAllTools: () => [],
+      appendEntry() { throw new Error("ledger unavailable"); },
+      sendUserMessage(message: string) { messages.push(message); },
+      async setModel(model: any) { activations.push(`${model.provider}/${model.id}`); return true; },
+    };
+    modelRouter(pi);
+    const ctx: any = {
+      models: { list: () => liveModels, current: () => liveModels[0] },
+      sessionManager: {
+        getBranch: () => [{
+          type: "custom",
+          customType: "co.sangyaa.pi-marg.model-routing.v1",
+          data: {
+            version: 2,
+            activeStage: "B",
+            selections: {},
+            fallbacks: {
+              high: {
+                selector: "anthropic/claude-opus-4.9", identity: "claude-opus-4.9",
+                label: "Claude Opus 4.9", provider: "anthropic", tier: "frontier",
+                choice: "claude-frontier", access: "runtime-model", selectedAt: "2026-01-01T00:00:00Z",
+              },
+              low: {
+                selector: "openai-codex/gpt-terra", identity: "gpt-terra",
+                label: "GPT Terra", provider: "openai-codex", tier: "execution",
+                choice: "openai-mid", access: "runtime-model", selectedAt: "2026-01-01T00:00:00Z",
+              },
+            },
+          },
+        }],
+      },
+      ui: { notify(message: string) { notifications.push(message); } },
+    };
+    handlers.get("session_start")({}, ctx);
+
+    await handlers.get("agent_end")({
+      messages: [{
+        role: "assistant", stopReason: "error", errorMessage: "quota exhausted",
+        provider: "devin", model: "swe-2", responseId: "persist-failure-1",
+      }],
+    }, ctx);
+
+    expect(activations).toEqual(["anthropic/claude-opus-4.9"]);
+    expect(messages.at(-1)).toContain("Resume the current Stage B work");
+    expect(notifications.some((message) => message.includes("could not save"))).toBe(true);
   });
 
   test("cancels at provider step without persisting partial model state", async () => {

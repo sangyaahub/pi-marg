@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Added two runtime-only recovery choices: a strong **high** backup followed by an economical **low** backup.
+- Automatically switches and resumes after OMP or Pi settles a usage-limit/quota failure, with a visible notification and a no-repeat-side-effects continuation instruction.
+- Handles direct runtime-model failures and detected model-execution tool failures (including external Devin and subagents); old v1 session routes migrate without losing their A/B/C/D selections.
+- Deduplicates repeated failure events, ignores transient throttles, advances to low only when the active high model fails, restores Pi tree-navigation state, and warns without stranding the run if ledger persistence fails after activation.
+
 ## 1.0.3 — 2026-09-14
 
 - Made model routing explicitly model-agnostic: live OMP/Pi authenticated catalogs are the only source of truth, with soft preferred-class ranking that never requires a maintainer's subscriptions.

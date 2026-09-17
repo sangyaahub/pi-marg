@@ -1,14 +1,21 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  MODEL_STATE_TYPE,
   buildModelCatalog,
   emptyModelRouteState,
+  executeAutomaticFailover,
   executeModelRoute,
+  findTerminalUsageLimitFailure,
   formatCatalogPresentation,
+  hasConfiguredFallback,
+  isUsageLimitErrorText,
   matchNumberedOption,
+  modelToolUsageLimitFailure,
   normalizeModelIdentity,
   numberedOptionLabel,
   requiredStagesForWorkType,
+  restoreModelRouteState,
   uniqueProviders,
   validateDistinctSelection,
   type ModelLike,
@@ -100,8 +107,9 @@ describe("model routing", () => {
     expect(normalizeModelIdentity("cursor/claude-4-opus-high")).toBe("claude-opus-4");
     const candidate = buildModelCatalog(models, false).C[0];
     const state: ModelRouteState = {
-      version: 1,
+      version: 2,
       selections: { A: { ...candidate, selectedAt: "2026-01-01T00:00:00Z" } },
+      fallbacks: {},
     };
     expect(validateDistinctSelection(state, "C", candidate)).toContain("Stage A already uses");
   });
@@ -144,7 +152,298 @@ describe("model routing", () => {
     });
     expect(result.response.isError).toBeUndefined();
     expect(result.state.selections.B?.selector).toBe("openai/gpt-terra");
+    expect(result.state.activeStage).toBe("B");
     expect(persisted).toEqual(result.state);
+  });
+
+  test("migrates saved v1 routes without losing stage selections", () => {
+    const candidate = buildModelCatalog(models, false).A[0]!;
+    const restored = restoreModelRouteState([{
+      type: "custom",
+      customType: MODEL_STATE_TYPE,
+      data: {
+        version: 1,
+        workType: 2,
+        selections: { A: { ...candidate, selectedAt: "2026-01-01T00:00:00Z" } },
+      },
+    }]);
+
+    expect(restored.version).toBe(2);
+    expect(restored.workType).toBe(2);
+    expect(restored.selections.A?.selector).toBe(candidate.selector);
+    expect(restored.fallbacks).toEqual({});
+  });
+
+  test("saves distinct high and low fallback models without activating them", async () => {
+    const activations: string[] = [];
+    let persisted: ModelRouteState | undefined;
+    const port = {
+      runtimeName: "OMP" as const,
+      models,
+      hasExternalDevin: false,
+      activate: async (model: ModelLike) => { activations.push(`${model.provider}/${model.id}`); return true; },
+      persist: (next: ModelRouteState) => { persisted = next; },
+      now: () => "2026-01-01T00:00:00Z",
+    };
+
+    const high = await executeModelRoute(emptyModelRouteState(), {
+      action: "select_fallback",
+      fallback: "high",
+      target: "anthropic/claude-opus-4.9",
+    }, port);
+    expect(high.response.isError).toBeUndefined();
+    expect(high.state.fallbacks.high?.selector).toBe("anthropic/claude-opus-4.9");
+    expect(hasConfiguredFallback(high.state)).toBe(false);
+    expect(activations).toEqual([]);
+
+    const lowFirst = await executeModelRoute(emptyModelRouteState(), {
+      action: "select_fallback",
+      fallback: "low",
+      target: "openai/gpt-terra",
+    }, port);
+    expect(lowFirst.response.isError).toBe(true);
+
+    const conflict = await executeModelRoute(high.state, {
+      action: "select_fallback",
+      fallback: "low",
+      target: "anthropic/claude-opus-4.9",
+    }, port);
+    expect(conflict.response.isError).toBe(true);
+
+    const low = await executeModelRoute(high.state, {
+      action: "select_fallback",
+      fallback: "low",
+      target: "openai/gpt-terra",
+    }, port);
+    expect(low.response.isError).toBeUndefined();
+    expect(low.state.fallbacks.low?.selector).toBe("openai/gpt-terra");
+    expect(hasConfiguredFallback(low.state)).toBe(true);
+    expect(persisted).toEqual(low.state);
+    expect(activations).toEqual([]);
+  });
+
+  test("switches high then low on terminal usage-limit failures", async () => {
+    const catalog = buildModelCatalog(models, false);
+    const selectedAt = "2026-01-01T00:00:00Z";
+    const state: ModelRouteState = {
+      ...emptyModelRouteState(),
+      activeStage: "B",
+      fallbacks: {
+        high: { ...catalog.A.find((item) => item.selector === "anthropic/claude-opus-4.9")!, selectedAt },
+        low: { ...catalog.B.find((item) => item.selector === "openai/gpt-terra")!, selectedAt },
+      },
+    };
+    const activated: string[] = [];
+    const persisted: ModelRouteState[] = [];
+    const port = {
+      runtimeName: "OMP" as const,
+      models,
+      hasExternalDevin: false,
+      activate: async (model: ModelLike) => { activated.push(`${model.provider}/${model.id}`); return true; },
+      persist: (next: ModelRouteState) => { persisted.push(next); },
+      now: () => "2026-01-02T00:00:00Z",
+    };
+
+    const high = await executeAutomaticFailover(state, "devin/swe-2", port);
+    expect(high.switched?.level).toBe("high");
+    expect(high.switched?.selection.selector).toBe("anthropic/claude-opus-4.9");
+    expect(high.state.activeFallback).toBe("high");
+
+    const low = await executeAutomaticFailover(high.state, "anthropic/claude-opus-4.9", port);
+    expect(low.switched?.level).toBe("low");
+    expect(low.switched?.selection.selector).toBe("openai/gpt-terra");
+    expect(low.state.activeFallback).toBe("low");
+
+    const exhausted = await executeAutomaticFailover(low.state, "openai/gpt-terra", port);
+    expect(exhausted.switched).toBeUndefined();
+    expect(exhausted.exhausted).toBe(true);
+    expect(exhausted.stateChanged).toBe(true);
+
+    const duplicate = await executeAutomaticFailover(exhausted.state, "openai/gpt-terra", port);
+    expect(duplicate.exhausted).toBe(true);
+    expect(duplicate.stateChanged).toBe(false);
+    expect(duplicate.state).toBe(exhausted.state);
+    expect(activated).toEqual(["anthropic/claude-opus-4.9", "openai/gpt-terra"]);
+    expect(persisted).toHaveLength(3);
+  });
+
+  test("ignores a duplicate failure event and advances only when the active backup fails", async () => {
+    const catalog = buildModelCatalog(models, false);
+    const selectedAt = "2026-01-01T00:00:00Z";
+    const state: ModelRouteState = {
+      ...emptyModelRouteState(),
+      fallbacks: {
+        high: { ...catalog.A.find((item) => item.selector === "anthropic/claude-opus-4.9")!, selectedAt },
+        low: { ...catalog.B.find((item) => item.selector === "openai/gpt-terra")!, selectedAt },
+      },
+    };
+    const activated: string[] = [];
+    const port = {
+      runtimeName: "OMP" as const,
+      models,
+      hasExternalDevin: false,
+      activate: async (model: ModelLike) => { activated.push(`${model.provider}/${model.id}`); return true; },
+      persist() {},
+    };
+
+    const high = await executeAutomaticFailover(state, "tool/task", port, "tool:call-1");
+    const duplicate = await executeAutomaticFailover(high.state, "tool/task", port, "tool:call-1");
+    expect(duplicate.ignoredDuplicate).toBe(true);
+    expect(activated).toEqual(["anthropic/claude-opus-4.9"]);
+
+    const anotherTool = await executeAutomaticFailover(high.state, "tool/task", port, "tool:call-2");
+    expect(anotherTool.reusedCurrent).toBe(true);
+    expect(anotherTool.switched?.level).toBe("high");
+    expect(activated).toEqual(["anthropic/claude-opus-4.9"]);
+
+    const low = await executeAutomaticFailover(
+      anotherTool.state,
+      "anthropic/claude-opus-4.9",
+      port,
+      "model:high-failure",
+    );
+    expect(low.switched?.level).toBe("low");
+    expect(activated).toEqual(["anthropic/claude-opus-4.9", "openai/gpt-terra"]);
+  });
+
+  test("returns the activated state when persistence fails", async () => {
+    const catalog = buildModelCatalog(models, false);
+    const selectedAt = "2026-01-01T00:00:00Z";
+    const state: ModelRouteState = {
+      ...emptyModelRouteState(),
+      fallbacks: {
+        high: { ...catalog.A.find((item) => item.selector === "anthropic/claude-opus-4.9")!, selectedAt },
+        low: { ...catalog.B.find((item) => item.selector === "openai/gpt-terra")!, selectedAt },
+      },
+    };
+    const result = await executeAutomaticFailover(state, "devin/swe-2", {
+      runtimeName: "OMP",
+      models,
+      hasExternalDevin: false,
+      activate: async () => true,
+      persist() { throw new Error("ledger unavailable"); },
+    }, "model:devin-1");
+
+    expect(result.switched?.level).toBe("high");
+    expect(result.state.activeFallback).toBe("high");
+    expect(result.persistenceError).toBe("ledger unavailable");
+  });
+
+  test("skips a backup that cannot be activated and tries the next one", async () => {
+    const catalog = buildModelCatalog(models, false);
+    const selectedAt = "2026-01-01T00:00:00Z";
+    const state: ModelRouteState = {
+      ...emptyModelRouteState(),
+      fallbacks: {
+        high: { ...catalog.A.find((item) => item.selector === "anthropic/claude-opus-4.9")!, selectedAt },
+        low: { ...catalog.B.find((item) => item.selector === "openai/gpt-terra")!, selectedAt },
+      },
+    };
+    const attempted: string[] = [];
+    const result = await executeAutomaticFailover(state, "devin/swe-2", {
+      runtimeName: "OMP",
+      models,
+      hasExternalDevin: false,
+      async activate(model) {
+        const selector = `${model.provider}/${model.id}`;
+        attempted.push(selector);
+        if (selector === "anthropic/claude-opus-4.9") throw new Error("credential unavailable");
+        return true;
+      },
+      persist() {},
+    });
+
+    expect(attempted).toEqual(["anthropic/claude-opus-4.9", "openai/gpt-terra"]);
+    expect(result.switched?.level).toBe("low");
+  });
+
+  test("persists unavailable backups as exhausted once", async () => {
+    const catalog = buildModelCatalog(models, false);
+    const selectedAt = "2026-01-01T00:00:00Z";
+    const state: ModelRouteState = {
+      ...emptyModelRouteState(),
+      fallbacks: {
+        high: { ...catalog.A.find((item) => item.selector === "anthropic/claude-opus-4.9")!, selectedAt },
+        low: { ...catalog.B.find((item) => item.selector === "openai/gpt-terra")!, selectedAt },
+      },
+    };
+    const persisted: ModelRouteState[] = [];
+    const port = {
+      runtimeName: "OMP" as const,
+      models: [] as ModelLike[],
+      hasExternalDevin: false,
+      activate: async () => true,
+      persist(next: ModelRouteState) { persisted.push(next); },
+    };
+
+    const result = await executeAutomaticFailover(state, "devin/swe-2", port, "model:missing-1");
+    expect(result.exhausted).toBe(true);
+    expect(result.state.exhaustedSelectors).toEqual([
+      "devin/swe-2",
+      "anthropic/claude-opus-4.9",
+      "openai/gpt-terra",
+    ]);
+    expect(persisted).toHaveLength(1);
+
+    const duplicate = await executeAutomaticFailover(result.state, "devin/swe-2", port, "model:missing-1");
+    expect(duplicate.ignoredDuplicate).toBe(true);
+    expect(persisted).toHaveLength(1);
+  });
+
+  test("recognizes quota failures without treating ordinary errors as usage limits", () => {
+    expect(isUsageLimitErrorText("429 rate_limit_exceeded: weekly usage limit reached")).toBe(true);
+    expect(isUsageLimitErrorText("Devin Agent Compute Units exhausted")).toBe(true);
+    expect(isUsageLimitErrorText("HTTP 429 retry after 5 seconds")).toBe(false);
+    expect(isUsageLimitErrorText("rate_limit_exceeded; try again shortly")).toBe(false);
+    expect(isUsageLimitErrorText("TypeError: cannot read property 'id'")).toBe(false);
+    expect(modelToolUsageLimitFailure({
+      isError: true,
+      toolCallId: "devin-1",
+      toolName: "mcp__devin_run",
+      result: { payload: "x".repeat(40_000), error: "Agent Compute Units exhausted" },
+    })).toEqual({ selector: "devin/external-session", key: "tool:devin-1" });
+    expect(modelToolUsageLimitFailure({
+      isError: true,
+      toolName: "read_file",
+      result: { error: "quota exhausted" },
+    })).toBeUndefined();
+    expect(modelToolUsageLimitFailure({
+      isError: true,
+      toolName: "mcp__asana_create_task",
+      result: { error: "quota exhausted" },
+    })).toBeUndefined();
+    expect(modelToolUsageLimitFailure({
+      isError: true,
+      toolName: "task",
+      result: {
+        error: "worker crashed",
+        details: "Request metadata: test quota exhausted handling",
+        result: "Original request: quota exhausted",
+      },
+    })).toBeUndefined();
+    expect(modelToolUsageLimitFailure({
+      isError: true,
+      toolName: "task",
+      result: { details: { error: "monthly usage limit reached" } },
+    })).toEqual({ selector: "tool/task", key: "tool:task:monthly usage limit reached" });
+    expect(modelToolUsageLimitFailure({
+      isError: true,
+      toolName: "task",
+      result: { content: [{ type: "text", text: "monthly usage limit reached" }] },
+    })).toEqual({ selector: "tool/task", key: "tool:task:monthly usage limit reached" });
+  });
+
+  test("inspects only the latest assistant outcome for a terminal quota failure", () => {
+    expect(findTerminalUsageLimitFailure([
+      { role: "assistant", stopReason: "error", errorMessage: "quota exhausted" },
+      { role: "toolResult", content: [] },
+      { role: "assistant", stopReason: "stop", content: [] },
+    ])).toBeUndefined();
+
+    expect(findTerminalUsageLimitFailure([
+      { role: "assistant", stopReason: "stop", content: [] },
+      { role: "assistant", stopReason: "error", errorMessage: "monthly usage limit reached", timestamp: 42 },
+    ])?.timestamp).toBe(42);
   });
 
   test("numbers options and matches the exact numbered label", () => {

@@ -48,6 +48,11 @@ Record:
 - Stage C model: <exact live selector>
 - Stage D model: <exact live selector or n/a>
 - Model separation: A != C; B != D
+- High backup model: <exact live runtime selector>
+- Low backup model: <different exact live runtime selector>
+- Automatic failover: idle | high-active | low-active | exhausted
+- Last failover: <failed selector -> activated selector at timestamp, or none>
+- Recovery durability warning: <none or session ledger write failure that requires re-selection after restart>
 - CodeGraph: n/a | pending | ready | blocked
 - Runtime: advisor=<off|available|on|unavailable>; orchestration=<serial|task|workflowz>; checkpoint=<off|available|used>
 - Add-ons: Ponytail=<setting>; memory=<off|local|hindsight-recall|hindsight-retain>; language skills=<names or none>; cost=<posture>

@@ -7,4 +7,4 @@ blocking: true
 autoloadSkills: [auto-mode-router]
 ---
 
-Complete only the intake and availability checks from `auto-mode-router`. Ask in the required order: work context, work type, skill mode, live A/B/C/D selections, then add-ons. Call `auto_runtime_status` before recommending runtime capabilities. Return the proposed `[AUTO-MODE]` state. Do not plan, implement, or change project files.
+Complete only the intake and availability checks from `auto-mode-router`. Ask in the required order: work context, work type, skill mode, live A/B/C/D selections, high and low runtime backups, then add-ons. Call `auto_runtime_status` before recommending runtime capabilities. Return the proposed `[AUTO-MODE]` state. Do not plan, implement, or change project files.
