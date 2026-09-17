@@ -14,6 +14,34 @@ done
 
 bun -e '
   import { existsSync } from "node:fs";
+  const isMapping = (value) =>
+    value !== null && !Array.isArray(value) && typeof value === "object";
+
+  function assertNpmPublishWorkflow(workflow, path) {
+    const publish = workflow.jobs.publish;
+    const steps = publish?.steps;
+    const setupNode = steps?.find((step) => step?.uses === "actions/setup-node@v7");
+    const commands = steps?.map((step) => step?.run).filter(Boolean) ?? [];
+
+    if (
+      !isMapping(workflow.on) ||
+      !("workflow_dispatch" in workflow.on) ||
+      workflow.permissions?.contents !== "read" ||
+      workflow.permissions?.["id-token"] !== "write" ||
+      !isMapping(publish) ||
+      publish.if !== "github.ref == \u0027refs/heads/main\u0027" ||
+      publish.environment !== "npm-publish" ||
+      publish["runs-on"] !== "ubuntu-latest" ||
+      !Array.isArray(steps) ||
+      setupNode?.with?.["node-version"] !== 24 ||
+      setupNode?.with?.["registry-url"] !== "https://registry.npmjs.org" ||
+      setupNode?.with?.["package-manager-cache"] !== false ||
+      !commands.includes("npm publish --provenance")
+    ) {
+      throw new Error(`Unsafe npm publishing workflow: ${path}`);
+    }
+  }
+
   const packageJson = await Bun.file("package.json").json();
   const marketplace = await Bun.file(".omp-plugin/marketplace.json").json();
   if (packageJson.name !== "@sangyaahub/pi-marg") throw new Error("Unexpected package name");
@@ -58,6 +86,21 @@ bun -e '
     const text = await Bun.file(path).text();
     if (!text.startsWith("---\n") || !/\nname:\s*\S+/.test(text) || !/\ndescription:\s*.+/.test(text)) {
       throw new Error(`Invalid skill frontmatter: ${path}`);
+    }
+  }
+  for await (const path of new Bun.Glob(".github/workflows/*.{yml,yaml}").scan(".")) {
+    const text = await Bun.file(path).text();
+    const workflow = Bun.YAML.parse(text);
+    if (
+      !isMapping(workflow) ||
+      typeof workflow.name !== "string" ||
+      !("on" in workflow) ||
+      !isMapping(workflow.jobs)
+    ) {
+      throw new Error(`Invalid GitHub Actions workflow structure: ${path}`);
+    }
+    if (path === ".github/workflows/npm-deploy.yml") {
+      assertNpmPublishWorkflow(workflow, path);
     }
   }
   for await (const path of new Bun.Glob("**/*").scan({ cwd: ".", onlyFiles: true })) {
