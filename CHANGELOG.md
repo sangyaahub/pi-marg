@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.4 — 2026-09-17
 
 - Added two runtime-only recovery choices: a strong **high** backup followed by an economical **low** backup.
 - Automatically switches and resumes after OMP or Pi settles a usage-limit/quota failure, with a visible notification and a no-repeat-side-effects continuation instruction.
