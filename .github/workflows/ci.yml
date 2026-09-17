@@ -1,4 +1,4 @@
-name: CI
+name: npm-deploy-v2
 
 on:
   push:
