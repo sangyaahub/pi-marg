@@ -49,6 +49,27 @@ omp models
 
 The OMP adapter reads `ctx.models.list()`, which supplies authenticated and enabled models, and activates an exact catalog entry with `pi.setModel()`.
 
+## CheaperInference example
+
+This is one custom Oh My Pi provider, not a pinned PiMarg default. After it is authenticated, every model below is selectable at A, B, C, and D. A and C must still be different underlying models, and B and D must still be different underlying models.
+
+Create a CheaperInference key (`ci_live_...`) and save it as `CHEAPER_INFERENCE_API_KEY` in `~/.omp/agent/.env`. Point `providers.cheaperinference.apiKey` at that variable name. The base URL is `https://api.cheaperinference.com/v1`. Confirm ids with `GET /v1/models` before use, because the catalog can change.
+
+Register `kimi-k3`, `glm-5.3`, `glm-5.3-flash`, and `glm-5.2` under that provider, then verify with `omp models find cheaperinference`. The copy-paste provider block is in the README section [CheaperInference (Kimi and GLM)](README.md#cheaperinference-kimi-and-glm).
+
+One assignment that satisfies the distinct-model rule:
+
+| Stage | Selector |
+|---|---|
+| A | `cheaperinference/kimi-k3` |
+| C | `cheaperinference/glm-5.3` |
+| B | `cheaperinference/glm-5.3` |
+| D | `cheaperinference/kimi-k3` |
+| high backup | `cheaperinference/kimi-k3` |
+| low backup | `cheaperinference/glm-5.3-flash` |
+
+Any of those four models can be chosen for any stage. Calls spend CheaperInference wallet balance.
+
 ## Selection workflow
 
 1. Run `/pi-marg` for the full native intake, or `/auto-models choose` to change saved models.

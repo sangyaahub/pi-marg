@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/sangyaahub/pi-marg/releases"><img alt="Version 1.0.4" src="https://img.shields.io/badge/version-1.0.4-0451F7"></a>
+  <a href="https://github.com/sangyaahub/pi-marg/releases"><img alt="Version 1.0.5" src="https://img.shields.io/badge/version-1.0.5-0451F7"></a>
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-C27B1A"></a>
   <a href="https://pi.dev/packages?name=pi-marg"><img alt="Pi package" src="https://img.shields.io/badge/Pi-package-0338A8"></a>
   <a href="https://omp.sh"><img alt="Oh My Pi plugin" src="https://img.shields.io/badge/OMP-plugin-021E5C"></a>
@@ -11,7 +11,7 @@
 
 # PiMarg
 
-**Version 1.0.4 · MIT licensed · Pi Agent + Oh My Pi · by [Sangyaa](https://sangyaa.co)**
+**Version 1.0.5 · MIT licensed · Pi Agent + Oh My Pi · by [Sangyaa](https://sangyaa.co)**
 
 PiMarg turns an ordinary prompt into a governed development path. It identifies the work boundary, selects one engineering method, discovers the models and tools the active runtime really provides, separates thinking from execution, records evidence, and stops before protected actions.
 
@@ -123,6 +123,92 @@ Authenticate providers using the active runtime's normal login flow, then run:
 ```
 
 The router shows every model in the live authenticated and enabled registry. Stage-appropriate choices appear first and all other enabled choices remain selectable. It does not promise that a subscription route is free or unlimited. See [MODEL-SETUP.md](MODEL-SETUP.md).
+
+### CheaperInference (Kimi and GLM)
+
+Oh My Pi does not ship [CheaperInference](https://cheaperinference.com). Register it once, then `/auto-models choose` and `/pi-marg` offer its models at every stage. A and C must be different models. B and D must be different models.
+
+1. Create a dashboard key. Current keys begin with `ci_live_`.
+2. Store it in `~/.omp/agent/.env`, which Oh My Pi loads on startup:
+
+```bash
+CHEAPER_INFERENCE_API_KEY=ci_live_your_key
+```
+
+3. Add the provider to `~/.omp/agent/models.yml`. `apiKey` is the environment-variable name, not the secret. Confirm the live ids before relying on this list:
+
+```bash
+curl https://api.cheaperinference.com/v1/models \
+  -H "Authorization: Bearer $CHEAPER_INFERENCE_API_KEY"
+```
+
+```yaml
+providers:
+  cheaperinference:
+    baseUrl: https://api.cheaperinference.com/v1
+    api: openai-completions
+    apiKey: CHEAPER_INFERENCE_API_KEY
+    authHeader: true
+    compat:
+      supportsStore: false
+      supportsDeveloperRole: false
+      supportsReasoningEffort: true
+      supportsStrictMode: false
+      toolStrictMode: none
+      thinkingFormat: openai
+      reasoningContentField: reasoning_content
+      requiresReasoningContentForToolCalls: true
+      maxTokensField: max_tokens
+      reasoningEffortMap:
+        xhigh: max
+        max: max
+    models:
+      - id: kimi-k3
+        name: Kimi K3
+        reasoning: true
+        input: [text, image]
+        contextWindow: 1000000
+        maxTokens: 131072
+        tokenizer: kimi-k2
+      - id: glm-5.3
+        name: GLM 5.3
+        reasoning: true
+        input: [text]
+        contextWindow: 1000000
+        maxTokens: 131072
+        tokenizer: glm5
+      - id: glm-5.3-flash
+        name: GLM 5.3 Flash
+        reasoning: true
+        input: [text, image]
+        contextWindow: 1048576
+        maxTokens: 131072
+        tokenizer: glm5
+      - id: glm-5.2
+        name: GLM 5.2
+        reasoning: true
+        input: [text]
+        contextWindow: 1048576
+        maxTokens: 131072
+        tokenizer: glm5
+```
+
+4. Check that Oh My Pi can see them, then pick any of them at each stage:
+
+```bash
+omp models find cheaperinference
+```
+
+| Stage | One valid pick |
+|---|---|
+| A discover | `cheaperinference/kimi-k3` |
+| C plan review | `cheaperinference/glm-5.3` |
+| B build | `cheaperinference/glm-5.3` |
+| D code review | `cheaperinference/kimi-k3` |
+| high backup | `cheaperinference/kimi-k3` |
+| low backup | `cheaperinference/glm-5.3-flash` |
+
+Swap any row. The picker rejects the run only when A equals C, or B equals D. Recovery stays off until both backups are saved. This route bills a wallet on each call. The same steps are in [MODEL-SETUP.md](MODEL-SETUP.md).
 
 ## Start a workflow
 

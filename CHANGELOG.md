@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.5 — 2026-09-26
+
+- Documented how to register CheaperInference in Oh My Pi so Kimi and GLM models can be chosen at every A/B/C/D stage.
+- Recorded the distinct-model rule and a high/low backup example for that provider.
+
 ## 1.0.4 — 2026-09-17
 
 - Added two runtime-only recovery choices: a strong **high** backup followed by an economical **low** backup.
