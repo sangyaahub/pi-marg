@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.7 — 2026-10-03
+
+- Stages 1–3 of Auto Mode intake now use the host selection tool (`ask` on OMP) instead of asking the user to type numbers in chat.
+- The `auto-intake` agent can call `ask`, so the selection window is available when intake runs as a subagent.
+
 ## 1.0.6 — 2026-10-03
 
 - Reopening `/pi-marg` highlights the saved boundary, work type, skill, and A/B/C/D selectors. Enter keeps that row, and intake activates the first required stage model before the work message is sent.

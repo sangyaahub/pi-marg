@@ -10,6 +10,7 @@ For every new substantive user task, load and follow the `auto-mode-router` skil
 - Do not restart intake for acknowledgements, clarifications, approval replies, or follow-ups that belong to the active task.
 - If the conversation already contains an active Auto Mode session record, reuse it. Start a new intake only when the user starts a materially different task or invokes `/auto-reset`.
 - The first intake question is always whether the work is for a job/client or personal.
+- Ask work context, work type, and skill mode through the host selection tool (`ask` on OMP). One stage at a time. Do not ask the user to type a number.
 - Confirm one of work types 1–7, then confirm skill mode 1–4 before execution.
 - After skill mode, use the live `auto_model_route` catalog and record required A/B/C/D choices. A and C must use different underlying models; B and D must use different underlying models.
 - Activate the saved model before each A/B/C/D stage. Never guess or pin a version absent from the active Pi or OMP registry.
