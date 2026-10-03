@@ -446,22 +446,25 @@ export default function modelRouter(pi: any) {
       const skillMode = SKILL_MODES[SKILL_MODE_ITEMS.indexOf(skillItem)]!;
 
       const home = routeHome(ctx);
+      const pauseForRestart = () => {
+        rememberRuntimeRoute("OMP", {
+          version: 2,
+          workType,
+          boundary,
+          skillMode,
+          selections: {},
+          fallbacks: {},
+        }, home);
+        ctx.ui.notify(
+          "Restart OMP so it reloads models.yml, then run /pi-marg again. Work type and skill answers are saved and model selection will resume.",
+          "warning",
+        );
+      };
       let liveModels = ctx.models.list() as ModelLike[];
       if (liveModels.length === 0) {
         const setup = await configureEmptyCatalog(ctx, home);
         if (setup.status === "restart") {
-          rememberRuntimeRoute("OMP", {
-            version: 2,
-            workType,
-            boundary,
-            skillMode,
-            selections: {},
-            fallbacks: {},
-          }, home);
-          ctx.ui.notify(
-            "Restart OMP so it reloads models.yml, then run /pi-marg again. Work type and skill answers are saved and model selection will resume.",
-            "warning",
-          );
+          pauseForRestart();
           return;
         }
         if (setup.status !== "ready") return;
@@ -474,18 +477,7 @@ export default function modelRouter(pi: any) {
         if (decision === "defer") {
           stopBeforePair = true;
         } else if (decision.status === "restart") {
-          rememberRuntimeRoute("OMP", {
-            version: 2,
-            workType,
-            boundary,
-            skillMode,
-            selections: {},
-            fallbacks: {},
-          }, home);
-          ctx.ui.notify(
-            "Restart OMP so it reloads models.yml, then run /pi-marg again. Work type and skill answers are saved and model selection will resume.",
-            "warning",
-          );
+          pauseForRestart();
           return;
         } else if (decision.status !== "ready") {
           return;
