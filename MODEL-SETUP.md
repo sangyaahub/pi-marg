@@ -16,7 +16,7 @@ LIVE AUTHENTICATED CATALOG
    high backup ──► low backup
 ```
 
-If the live catalog is empty, PiMarg stops and promotes provider/subscription setup instead of guessing models.
+If the live catalog is empty, `/pi-marg` offers three actions: sign in with `/login`, add a custom OpenAI-compatible provider, or cancel. The custom path writes `apiKey: ENV_VAR_NAME` into `~/.omp/agent/models.yml` and the secret only into `~/.omp/agent/.env`. Cancelling writes neither file.
 
 ## Roles
 
@@ -37,7 +37,7 @@ Use Pi's normal provider configuration or environment variables, then verify ava
 pi --list-models
 ```
 
-The Pi adapter reads `ctx.scopedModels` when the session has a model allowlist; otherwise it reads `ctx.modelRegistry.getAvailable()`. This respects both authentication and an intentional session scope.
+The Pi adapter reads `ctx.scopedModels` when the session has a model allowlist; otherwise it reads `ctx.modelRegistry.getAvailable()`. A model can be authenticated and still hidden because that session allowlist is active. This is a scope limit, not a missing login.
 
 ## Oh My Pi
 
@@ -72,8 +72,8 @@ Any of those four models can be chosen for any stage. Calls spend CheaperInferen
 
 ## Selection workflow
 
-1. Run `/pi-marg` for the full native intake, or `/auto-models choose` to change saved models.
-2. Confirm the work type so PiMarg knows which stages are required.
+1. Run `/pi-marg` for the full native intake, or `/auto-models choose` to change saved models. Reopening either one highlights the saved boundary, work type, skill, and each saved A/B/C/D and backup selector. Pressing Enter keeps that highlighted row.
+2. Confirm the work type so PiMarg knows which stages are required. A saved choice that is no longer in the live catalog is reported as missing and is not activated or remapped.
 3. Required stage prompts and catalog sections are always shown in ascending order: **A, then B, then C, then D** (skipping stages that do not apply).
 4. For each required stage, choose a **provider** first (numbered `1. …`), then a **model** from that provider (numbered `1. …`). Exact `provider/id` selectors are the selection keys—not display numbers alone.
 5. Select A and C when discovery/review is required; recommended frontier choices appear first within their lists when recognizable, but every live model remains selectable.

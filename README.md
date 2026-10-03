@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/sangyaahub/pi-marg/releases"><img alt="Version 1.0.5" src="https://img.shields.io/badge/version-1.0.5-0451F7"></a>
+  <a href="https://github.com/sangyaahub/pi-marg/releases"><img alt="Version 1.0.6" src="https://img.shields.io/badge/version-1.0.6-0451F7"></a>
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-C27B1A"></a>
   <a href="https://pi.dev/packages?name=pi-marg"><img alt="Pi package" src="https://img.shields.io/badge/Pi-package-0338A8"></a>
   <a href="https://omp.sh"><img alt="Oh My Pi plugin" src="https://img.shields.io/badge/OMP-plugin-021E5C"></a>
@@ -11,7 +11,7 @@
 
 # PiMarg
 
-**Version 1.0.5 · MIT licensed · Pi Agent + Oh My Pi · by [Sangyaa](https://sangyaa.co)**
+**Version 1.0.6 · MIT licensed · Pi Agent + Oh My Pi · by [Sangyaa](https://sangyaa.co)**
 
 PiMarg turns an ordinary prompt into a governed development path. It identifies the work boundary, selects one engineering method, discovers the models and tools the active runtime really provides, separates thinking from execution, records evidence, and stops before protected actions.
 
@@ -122,7 +122,13 @@ Authenticate providers using the active runtime's normal login flow, then run:
 /auto-models choose
 ```
 
-The router shows every model in the live authenticated and enabled registry. Stage-appropriate choices appear first and all other enabled choices remain selectable. It does not promise that a subscription route is free or unlimited. See [MODEL-SETUP.md](MODEL-SETUP.md).
+The router shows every model in the live authenticated and enabled registry. Stage-appropriate choices appear first and all other enabled choices remain selectable. Reopening `/pi-marg` highlights the saved selector; Enter keeps it and activates the first required stage model. It does not promise that a subscription route is free or unlimited. See [MODEL-SETUP.md](MODEL-SETUP.md).
+
+### Custom OpenAI-compatible provider
+
+When OMP has no models yet, `/pi-marg` can register a custom provider without leaving the intake. It asks for a provider id, display name, base URL, env var name, and model ids. `models.yml` stores `apiKey: YOUR_ENV_VAR`. The secret goes only in `~/.omp/agent/.env`. After the runtime reloads, every model from that provider is offered at A, B, C, and D. A and C must still be different models, and B and D must still be different models. With only one model, PiMarg says so before stage A and lets you add another model or stop before the paired stage.
+
+CheaperInference below is one worked example of that same shape, not the only custom provider PiMarg accepts.
 
 ### CheaperInference (Kimi and GLM)
 
