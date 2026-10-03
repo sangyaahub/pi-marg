@@ -16,16 +16,24 @@ CONTEXT ─► TYPE ─► SKILL MODE ─► MODELS ─► RUNTIME ─► ADD-ON
 
 Ask one intake stage at a time. A clear user prompt can support a proposed classification, but it does not remove the required confirmation.
 
+## How to ask
+
+Stages 1–3 are selection questions. Call the host's blocking question tool when that tool is already in the current tool list. On OMP the tool is `ask`. Elsewhere, use the listed equivalent (`AskUserQuestion`, `ask_user_question`, or `vscode_askquestions`). Do not probe for a tool that is not listed.
+
+Put each choice in `options` as a short label with no leading number. Set `recommended` to the inferred option when the tool accepts it. Then stop and wait. Do not print the choices as a numbered chat list, and do not ask for a typed number or a combined reply such as `2 / 7 / 4`.
+
+Work type has seven options. Pass all seven in that one question. The ask tool's usual "2–5 options" note is for ordinary clarifications; it does not apply to this fixed list, and it is not a reason to drop a type or switch to typed numbers.
+
+If no question tool is listed, or a real call returns an error, render one numbered list in chat and accept the number. The live model catalog in stage 4 always uses that numbered path, because a full provider or model list does not fit the selection UI.
+
 ## Stage 1 — work context
 
-Ask first with numbered options:
+Ask with the question tool:
 
-> Is this for your job/client, or is it personal work?
->
-> 1. Job/client
-> 2. Personal
+- Question: Is this for your job/client, or is it personal work?
+- Options: `Job/client`, `Personal`
 
-Record exactly one canonical value (`job-client` or `personal`); numbering is presentation-only:
+Record exactly one canonical value (`job-client` or `personal`):
 
 - `job-client`: Do not add Sangyaa branding, name, logo, metadata, footer, or promotional language. Use the employer/client/project brand already in scope.
 - `personal`: Existing project branding wins. Sangyaa branding is opt-in, never automatic.
@@ -34,23 +42,26 @@ Do not start code, research, or planning before this answer unless the user is a
 
 ## Stage 2 — work type
 
-Infer the most likely type, state it plainly, and ask the user to confirm. If ambiguous, show the relevant choices only.
+Infer the most likely type, name it in the question, mark that option recommended, and ask with the question tool. If ambiguous, show only the relevant choices. These labels are the options; the number is the recorded type id, not a chat prefix.
 
-1. New idea or development from scratch: brainstorming and analysis.
-2. New feature for an existing repository.
-3. Improve an existing feature in an existing repository.
-4. Proactive bug discovery or bug fix in an existing repository.
-5. Security review or security fixes.
-6. Thoughts, explanation, or another question about an existing repository or feature.
-7. Business, sales, or other non-technical analysis.
+1. `New idea or development from scratch` — brainstorming and analysis.
+2. `New feature for an existing repository`
+3. `Improve an existing feature in an existing repository`
+4. `Proactive bug discovery or bug fix in an existing repository`
+5. `Security review or security fixes`
+6. `Thoughts, explanation, or another question about an existing repository or feature`
+7. `Business, sales, or other non-technical analysis`
 
 If one request contains multiple types, pick the type that owns the immediate outcome and record later types as follow-on phases. Do not open multiple workflow spines.
 
 ## Stage 3 — skill mode
 
-Ask:
+Ask with the question tool. Question: Which method should own this task? Options:
 
-> Which method should own this task: 1) Compound Engineering, 2) Superpowers, 3) GSD Core, or 4) choose the best one for me?
+1. `Compound Engineering`
+2. `Superpowers`
+3. `GSD Core`
+4. `Choose the best one for me`
 
 - Mode 1: use the Compound Engineering mapping for the confirmed work type.
 - Mode 2: use the Superpowers mapping.
@@ -65,7 +76,7 @@ Catalog presentation is provider-first:
 
 1. Show **every** authenticated provider as numbered options `1.`, `2.`, … (including Devin when present). Never omit a logged-in provider and never curate down to Claude/Codex/Cursor only.
 2. After the user picks a provider, call `auto_model_route` again with the same work type and `provider=<name>` so the tool lists **every** model for that provider as numbered `1.`, `2.`, …
-3. Ask the user with those numbered labels. If the option UI cannot fit the full list, paste the numbered list into the question text and accept the number or exact selector.
+3. Ask in chat with those numbered labels, and accept the number or the exact selector. Do not put a full provider or model list into the selection tool; it truncates and hides logged-in providers.
 
 Interactive `/pi-marg` uses the same provider → model two-step with numbered labels.
 

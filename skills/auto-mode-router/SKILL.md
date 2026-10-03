@@ -7,7 +7,7 @@ description: Classify a new work request, select one development-method skill sp
 
 Turn a user request into one controlled workflow.
 
-1. Read [intake-and-state.md](references/intake-and-state.md) and complete the intake stages in order.
+1. Read [intake-and-state.md](references/intake-and-state.md) and complete the intake stages in order. Ask work context, work type, and skill mode with the host selection tool, one stage at a time.
 2. After the user selects mode 1–4, read [routing-matrix.md](references/routing-matrix.md) and select exactly one primary skill spine.
 3. Read [session-ledger.md](references/session-ledger.md), create the neutral Markdown ledger, and identify the selected spine's authoritative planning artifact.
 4. Read [models-and-tools.md](references/models-and-tools.md). Call `auto_model_route` with `action: catalog` and the confirmed work type, present the live choices, and save each required A/B/C/D selection. The runtime rejects A=C and B=D. Then save two distinct runtime-only recovery models with `action: select_fallback`: high first, low second.
