@@ -6,7 +6,6 @@ import {
   buildModelCatalog,
   candidatesForProvider,
   commitIntakeRoute,
-  emptyCatalogSetupMessage,
   emptyModelRouteState,
   executeAutomaticFailover,
   executeModelRoute,
@@ -32,6 +31,7 @@ import {
 } from "../../../core/model-routing";
 import { normalizeCapabilityNames } from "../../../core/runtime-capabilities";
 import { loadRuntimeRoute, rememberRuntimeRoute } from "../../../core/user-route";
+import { configureEmptyCatalog, resolveSingleModel } from "./provider-setup";
 
 const WORK_BOUNDARIES = ["1. Job/client", "2. Personal"] as const;
 
@@ -445,17 +445,69 @@ export default function modelRouter(pi: any) {
       if (!skillItem) return;
       const skillMode = SKILL_MODES[SKILL_MODE_ITEMS.indexOf(skillItem)]!;
 
-      const liveModels = ctx.models.list() as ModelLike[];
+      const home = routeHome(ctx);
+      let liveModels = ctx.models.list() as ModelLike[];
       if (liveModels.length === 0) {
-        ctx.ui.notify(emptyCatalogSetupMessage("OMP"), "error");
-        return;
+        const setup = await configureEmptyCatalog(ctx, home);
+        if (setup.status === "restart") {
+          rememberRuntimeRoute("OMP", {
+            version: 2,
+            workType,
+            boundary,
+            skillMode,
+            selections: {},
+            fallbacks: {},
+          }, home);
+          ctx.ui.notify(
+            "Restart OMP so it reloads models.yml, then run /pi-marg again. Work type and skill answers are saved and model selection will resume.",
+            "warning",
+          );
+          return;
+        }
+        if (setup.status !== "ready") return;
+        liveModels = setup.models;
       }
+
+      let stopBeforePair = false;
+      if (liveModels.length === 1) {
+        const decision = await resolveSingleModel(ctx, home);
+        if (decision === "defer") {
+          stopBeforePair = true;
+        } else if (decision.status === "restart") {
+          rememberRuntimeRoute("OMP", {
+            version: 2,
+            workType,
+            boundary,
+            skillMode,
+            selections: {},
+            fallbacks: {},
+          }, home);
+          ctx.ui.notify(
+            "Restart OMP so it reloads models.yml, then run /pi-marg again. Work type and skill answers are saved and model selection will resume.",
+            "warning",
+          );
+          return;
+        } else if (decision.status !== "ready") {
+          return;
+        } else {
+          liveModels = decision.models;
+        }
+      }
+
       const catalog = buildModelCatalog(liveModels, hasExternalDevin(pi));
       const fallbackCatalog = buildFallbackCatalog(catalog);
       const availability = revalidateSavedRoute(state, liveModels, hasExternalDevin(pi));
       const selected: Partial<Record<AutoStage, ModelCandidate>> = {};
       const stages = requiredStagesForWorkType(workType);
+      const oppositeStage: Record<AutoStage, AutoStage> = { A: "C", C: "A", B: "D", D: "B" };
       for (const stage of stages) {
+        if (stopBeforePair && selected[oppositeStage[stage]]) {
+          ctx.ui.notify(
+            `Stage ${stage} needs a different model from Stage ${oppositeStage[stage]}. Stopping before that paired stage; nothing was saved as a complete route.`,
+            "warning",
+          );
+          return;
+        }
         const savedChoice = availability.selections[stage];
         if (savedChoice?.status === "missing") {
           ctx.ui.notify(

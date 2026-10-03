@@ -1,10 +1,10 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 
 import modelRouter from "../adapters/omp/extensions/model-router";
-import { userRoutePath, writeUserRoute } from "../core/user-route";
+import { agentDirectory, userRoutePath, writeUserRoute } from "../core/user-route";
 
 process.env.PI_MARG_AGENT_HOME = mkdtempSync(join(tmpdir(), "pi-marg-omp-"));
 
@@ -639,12 +639,11 @@ describe("OMP interactive PiMarg command", () => {
     expect(entries).toHaveLength(0);
   });
 
-  test("reports an actionable error after intake when no models are available", async () => {
+  test("offers sign-in, a custom provider, or cancel when no models are available", async () => {
     let command: any;
     const entries: Array<{ type: string; data: any }> = [];
     const messages: string[] = [];
-    const notifications: Array<{ message: string; level: string }> = [];
-    const selectedTitles: string[] = [];
+    let setupOptions: string[] = [];
     const pi: any = {
       zod: fakeZod(),
       on() {},
@@ -661,25 +660,28 @@ describe("OMP interactive PiMarg command", () => {
 
     await command.handler("add CSV export", {
       hasUI: true,
+      agentHome: mkdtempSync(join(tmpdir(), "pi-marg-empty-")),
       models: { list: () => [] },
       ui: {
         async input() { return undefined; },
-        async select(title: string, options: string[]) {
-          selectedTitles.push(title);
-          if (title === "Work boundary") return options[0];
-          if (title === "Work type") return options.find((option) => option.startsWith("2."));
-          if (title === "Workflow skill") return options[0];
+        async select(title: string, options: Array<string | { label: string }>) {
+          const labels = options.map((option) => typeof option === "string" ? option : option.label);
+          if (title === "Work boundary") return labels[0];
+          if (title === "Work type") return labels.find((option) => option.startsWith("2."));
+          if (title === "Workflow skill") return labels[0];
+          if (title === "Model setup") {
+            setupOptions = labels;
+            return labels.find((option) => option.includes("Cancel"));
+          }
           return undefined;
         },
-        notify(message: string, level: string) { notifications.push({ message, level }); },
+        notify() {},
       },
     });
 
-    expect(selectedTitles).toEqual(["Work boundary", "Work type", "Workflow skill"]);
-    expect(notifications).toEqual([{
-      message: "No authenticated and enabled OMP models were found. Set up any provider subscription with /login, verify with `omp models` or /model, then run /pi-marg again. PiMarg picks up whatever models you configure in OMP; see MODEL-SETUP.md.",
-      level: "error",
-    }]);
+    expect(setupOptions.some((label) => label.includes("Sign in"))).toBe(true);
+    expect(setupOptions.some((label) => label.includes("custom OpenAI-compatible"))).toBe(true);
+    expect(setupOptions.some((label) => label.includes("Cancel"))).toBe(true);
     expect(entries).toHaveLength(0);
     expect(messages).toHaveLength(0);
   });
@@ -1183,6 +1185,124 @@ describe("OMP interactive PiMarg command", () => {
 
     expect(notifications.some((notice) => notice.message.includes("missing/gone-model") && notice.message.includes("missing"))).toBe(true);
     expect(activations).not.toContain("missing/gone-model");
+  });
+
+  test("adds a custom provider and then lists both of its models", async () => {
+    let command: any;
+    const entries: Array<{ type: string; data: any }> = [];
+    const home = mkdtempSync(join(tmpdir(), "pi-marg-custom-"));
+    const seen = new Set<string>();
+    let models: Array<{ provider: string; id: string; name: string }> = [];
+    const answers = [
+      "example-gateway",
+      "Example Gateway",
+      "https://example.test/v1",
+      "EXAMPLE_GATEWAY_API_KEY",
+      "model-a, model-b",
+      "super-secret-value",
+    ];
+    let answerIndex = 0;
+    const pi: any = {
+      zod: fakeZod(),
+      on() {},
+      registerTool() {},
+      registerCommand(name: string, definition: any) {
+        if (name === "pi-marg") command = definition;
+      },
+      getAllTools: () => [],
+      appendEntry(type: string, data: any) { entries.push({ type, data }); },
+      sendUserMessage() {},
+      setModel: async () => true,
+    };
+    modelRouter(pi);
+
+    await command.handler("add gateway", {
+      hasUI: true,
+      agentHome: home,
+      models: {
+        list: () => models,
+        async reload() {
+          models = [
+            { provider: "example-gateway", id: "model-a", name: "Model A" },
+            { provider: "example-gateway", id: "model-b", name: "Model B" },
+          ];
+        },
+      },
+      ui: {
+        async input() { return answers[answerIndex++]; },
+        async select(title: string, options: Array<string | { label: string }>) {
+          const labels = options.map((option) => typeof option === "string" ? option : option.label);
+          if (title === "Work boundary") return labels[0];
+          if (title === "Work type") return labels.find((label) => label.startsWith("1."));
+          if (title === "Workflow skill") return labels[0];
+          if (title === "Model setup") return labels.find((label) => label.includes("custom OpenAI-compatible"));
+          if (title === "Stage A provider") return labels[0];
+          if (title === "Stage A model") {
+            for (const label of labels) seen.add(label);
+            return undefined;
+          }
+          return labels[0];
+        },
+        notify() {},
+      },
+    });
+
+    const yaml = readFileSync(join(agentDirectory("OMP", home), "models.yml"), "utf8");
+    expect(yaml).toContain("apiKey: EXAMPLE_GATEWAY_API_KEY");
+    expect(yaml).not.toContain("super-secret-value");
+    expect([...seen].some((label) => label.includes("example-gateway/model-a"))).toBe(true);
+    expect([...seen].some((label) => label.includes("example-gateway/model-b"))).toBe(true);
+    expect(entries).toHaveLength(0);
+  });
+
+  test("warns about the distinct-model rule before stage C when only one model exists", async () => {
+    let command: any;
+    const entries: Array<{ type: string; data: any }> = [];
+    const notifications: string[] = [];
+    const titles: string[] = [];
+    const pi: any = {
+      zod: fakeZod(),
+      on() {},
+      registerTool() {},
+      registerCommand(name: string, definition: any) {
+        if (name === "pi-marg") command = definition;
+      },
+      getAllTools: () => [],
+      appendEntry(type: string, data: any) { entries.push({ type, data }); },
+      sendUserMessage() {},
+      setModel: async () => true,
+    };
+    modelRouter(pi);
+
+    await command.handler("one model", {
+      hasUI: true,
+      agentHome: mkdtempSync(join(tmpdir(), "pi-marg-one-")),
+      models: {
+        list: () => [{ provider: "example-gateway", id: "model-a", name: "Model A" }],
+      },
+      ui: {
+        async input() { return undefined; },
+        async select(title: string, options: Array<string | { label: string }>) {
+          titles.push(title);
+          const labels = options.map((option) => typeof option === "string" ? option : option.label);
+          if (title === "Work boundary") return labels[0];
+          if (title === "Work type") return labels.find((label) => label.startsWith("1."));
+          if (title === "Workflow skill") return labels[0];
+          if (title === "Distinct models") return labels.find((label) => label.includes("stop before the paired stage"));
+          if (title === "Stage A provider" || title === "Stage A model") return labels[0];
+          return undefined;
+        },
+        notify(message: string) { notifications.push(message); },
+      },
+    });
+
+    const distinctAt = titles.indexOf("Distinct models");
+    const stageCAt = titles.indexOf("Stage C provider");
+    expect(distinctAt).toBeGreaterThan(-1);
+    expect(stageCAt).toBe(-1);
+    expect(distinctAt).toBeLessThan(titles.indexOf("Stage C model") === -1 ? titles.length : titles.indexOf("Stage C model"));
+    expect(notifications.some((message) => /different model/i.test(message))).toBe(true);
+    expect(entries).toHaveLength(0);
   });
 });
 
