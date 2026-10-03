@@ -499,6 +499,7 @@ describe("OMP interactive PiMarg command", () => {
     const entries: Array<{ type: string; data: any }> = [];
     const messages: string[] = [];
     const selectedTitles: string[] = [];
+    const notifications: Array<{ message: string; level: string }> = [];
     const models = [
       { provider: "anthropic", id: "claude-opus-4.9", name: "Claude Opus 4.9" },
       { provider: "openai-codex", id: "gpt-astra", name: "GPT Astra" },
@@ -532,7 +533,7 @@ describe("OMP interactive PiMarg command", () => {
           if (title === "Stage A model") return undefined;
           return labels[0];
         },
-        notify() {},
+        notify(message: string, level: string) { notifications.push({ message, level }); },
       },
     });
 
@@ -543,6 +544,10 @@ describe("OMP interactive PiMarg command", () => {
       "Stage A provider",
       "Stage A model",
     ]);
+    expect(notifications).toEqual([{
+      message: "Selection cancelled; no model was saved.",
+      level: "warning",
+    }]);
     expect(entries).toHaveLength(0);
     expect(messages).toHaveLength(0);
   });
@@ -747,4 +752,286 @@ describe("OMP interactive PiMarg command", () => {
       level: "warning",
     }]);
   });
+
+  test("highlights the saved row, accepts its raw label, and activates stage A before the user message", async () => {
+    let command: any;
+    const entries: Array<{ type: string; data: any }> = [];
+    const events: string[] = [];
+    const selectCalls: Array<{ title: string; initialIndex?: number; helpText?: string }> = [];
+    const handlers = new Map<string, any>();
+    const models = [
+      { provider: "anthropic", id: "claude-opus-4.9", name: "Claude Opus 4.9" },
+      { provider: "openai-codex", id: "gpt-astra-9", name: "GPT Astra 9" },
+      { provider: "openai-codex", id: "gpt-astra", name: "GPT Astra" },
+      { provider: "anthropic", id: "claude-sonnet-4.8", name: "Claude Sonnet 4.8" },
+      { provider: "openai-codex", id: "gpt-terra", name: "GPT Terra" },
+    ];
+    const saved = {
+      A: "openai-codex/gpt-astra",
+      C: "anthropic/claude-opus-4.9",
+      B: "openai-codex/gpt-terra",
+      D: "anthropic/claude-sonnet-4.8",
+    };
+    const pi: any = {
+      zod: fakeZod(),
+      on(name: string, handler: any) { handlers.set(name, handler); },
+      registerTool() {},
+      registerCommand(name: string, definition: any) {
+        if (name === "pi-marg") command = definition;
+      },
+      getAllTools: () => [],
+      appendEntry(type: string, data: any) { entries.push({ type, data }); },
+      sendUserMessage() { events.push("message"); },
+      async setModel(model: any) { events.push(`set:${model.provider}/${model.id}`); return true; },
+    };
+    modelRouter(pi);
+    handlers.get("session_start")?.({}, {
+      sessionManager: {
+        getBranch: () => [{
+          type: "custom",
+          customType: "co.sangyaa.pi-marg.model-routing.v1",
+          data: {
+            version: 2,
+            workType: 2,
+            boundary: "Personal",
+            skillMode: "1. Compound Engineering",
+            selections: {
+              A: savedSelection("openai-codex/gpt-astra", "GPT Astra", "openai-codex", "gpt-astra", "frontier", "openai-frontier"),
+              C: savedSelection("anthropic/claude-opus-4.9", "Claude Opus 4.9", "anthropic", "claude-opus-4.9", "frontier", "claude-frontier"),
+              B: savedSelection("openai-codex/gpt-terra", "GPT Terra", "openai-codex", "gpt-terra", "execution", "openai-mid"),
+              D: savedSelection("anthropic/claude-sonnet-4.8", "Claude Sonnet 4.8", "anthropic", "claude-sonnet-4.8", "execution", "claude-mid"),
+            },
+            fallbacks: {
+              high: savedSelection("anthropic/claude-opus-4.9", "Claude Opus 4.9", "anthropic", "claude-opus-4.9", "frontier", "claude-frontier"),
+              low: savedSelection("openai-codex/gpt-terra", "GPT Terra", "openai-codex", "gpt-terra", "execution", "openai-mid"),
+            },
+          },
+        }],
+      },
+    });
+
+    await command.handler("reopen saved route", {
+      hasUI: true,
+      models: { list: () => models },
+      ui: {
+        async input() { return undefined; },
+        async select(title: string, options: Array<string | { label: string }>, settings?: { initialIndex?: number; helpText?: string }) {
+          const labels = options.map((option) => typeof option === "string" ? option : option.label);
+          selectCalls.push({ title, initialIndex: settings?.initialIndex, helpText: settings?.helpText });
+          if (title === "Stage A model") return "GPT Astra — openai-codex/gpt-astra";
+          return selectFromOptions(title, options, saved, {
+            high: "anthropic/claude-opus-4.9",
+            low: "openai-codex/gpt-terra",
+          }) ?? labels[0];
+        },
+        notify() {},
+      },
+    });
+
+    const provider = selectCalls.find((call) => call.title === "Stage A provider");
+    const model = selectCalls.find((call) => call.title === "Stage A model");
+    const boundary = selectCalls.find((call) => call.title === "Work boundary");
+    expect(provider?.initialIndex).toBeGreaterThan(0);
+    expect(model?.initialIndex).toBeGreaterThan(0);
+    expect(model?.helpText).toContain("openai-codex/gpt-astra");
+    expect(boundary?.initialIndex).toBe(1);
+    expect(entries[0]?.data.selections.A.selector).toBe("openai-codex/gpt-astra");
+    expect(events.indexOf("set:openai-codex/gpt-astra")).toBeGreaterThanOrEqual(0);
+    expect(events.indexOf("message")).toBeGreaterThan(events.indexOf("set:openai-codex/gpt-astra"));
+  });
+
+  test("pressing enter on the highlighted row keeps the saved selector", async () => {
+    let command: any;
+    const entries: Array<{ type: string; data: any }> = [];
+    const handlers = new Map<string, any>();
+    const models = [
+      { provider: "anthropic", id: "claude-opus-4.9", name: "Claude Opus 4.9" },
+      { provider: "openai-codex", id: "gpt-astra-9", name: "GPT Astra 9" },
+      { provider: "openai-codex", id: "gpt-astra", name: "GPT Astra" },
+      { provider: "anthropic", id: "claude-sonnet-4.8", name: "Claude Sonnet 4.8" },
+      { provider: "openai-codex", id: "gpt-terra", name: "GPT Terra" },
+    ];
+    const pi: any = {
+      zod: fakeZod(),
+      on(name: string, handler: any) { handlers.set(name, handler); },
+      registerTool() {},
+      registerCommand(name: string, definition: any) {
+        if (name === "pi-marg") command = definition;
+      },
+      getAllTools: () => [],
+      appendEntry(type: string, data: any) { entries.push({ type, data }); },
+      sendUserMessage() {},
+      setModel: async () => true,
+    };
+    modelRouter(pi);
+    handlers.get("session_start")?.({}, {
+      sessionManager: {
+        getBranch: () => [{
+          type: "custom",
+          customType: "co.sangyaa.pi-marg.model-routing.v1",
+          data: {
+            version: 2,
+            workType: 2,
+            boundary: "Personal",
+            skillMode: "1. Compound Engineering",
+            selections: {
+              A: savedSelection("openai-codex/gpt-astra", "GPT Astra", "openai-codex", "gpt-astra", "frontier", "openai-frontier"),
+            },
+            fallbacks: {},
+          },
+        }],
+      },
+    });
+
+    await command.handler("keep saved", {
+      hasUI: true,
+      models: { list: () => models },
+      ui: {
+        async input() { return undefined; },
+        async select(_title: string, options: Array<string | { label: string }>, settings?: { initialIndex?: number }) {
+          const labels = options.map((option) => typeof option === "string" ? option : option.label);
+          const index = typeof settings?.initialIndex === "number" ? settings.initialIndex : 0;
+          return labels[index];
+        },
+        notify() {},
+      },
+    });
+
+    expect(entries[0]?.data.selections.A.selector).toBe("openai-codex/gpt-astra");
+  });
+
+  test("does not persist an unrecognized select answer", async () => {
+    let command: any;
+    const entries: Array<{ type: string; data: any }> = [];
+    const notifications: Array<{ message: string; level: string }> = [];
+    const pi: any = {
+      zod: fakeZod(),
+      on() {},
+      registerTool() {},
+      registerCommand(name: string, definition: any) {
+        if (name === "pi-marg") command = definition;
+      },
+      getAllTools: () => [],
+      appendEntry(type: string, data: any) { entries.push({ type, data }); },
+      sendUserMessage() {},
+      setModel: async () => true,
+    };
+    modelRouter(pi);
+
+    await command.handler("bad answer", {
+      hasUI: true,
+      models: {
+        list: () => [
+          { provider: "openai-codex", id: "gpt-astra", name: "GPT Astra" },
+          { provider: "anthropic", id: "claude-opus-4.9", name: "Claude Opus 4.9" },
+        ],
+      },
+      ui: {
+        async input() { return undefined; },
+        async select(title: string, options: Array<string | { label: string }>) {
+          const labels = options.map((option) => typeof option === "string" ? option : option.label);
+          if (title === "Work boundary") return labels[1];
+          if (title === "Work type") return labels.find((label) => label.startsWith("1."));
+          if (title === "Workflow skill") return labels[0];
+          if (title === "Stage A provider") return labels[0];
+          if (title === "Stage A model") return "definitely-not-a-model";
+          return labels[0];
+        },
+        notify(message: string, level: string) { notifications.push({ message, level }); },
+      },
+    });
+
+    expect(entries).toHaveLength(0);
+    expect(notifications).toEqual([{
+      message: 'Unrecognized selection "definitely-not-a-model"; no model was saved.',
+      level: "error",
+    }]);
+  });
+
+  test("keeps the previous session entry when activation fails", async () => {
+    let command: any;
+    let tool: any;
+    const entries: Array<{ type: string; data: any }> = [];
+    const notifications: Array<{ message: string; level: string }> = [];
+    const handlers = new Map<string, any>();
+    const previous = savedSelection("anthropic/claude-opus-4.9", "Claude Opus 4.9", "anthropic", "claude-opus-4.9", "frontier", "claude-frontier");
+    const models = [
+      { provider: "anthropic", id: "claude-opus-4.9", name: "Claude Opus 4.9" },
+      { provider: "openai-codex", id: "gpt-astra", name: "GPT Astra" },
+      { provider: "anthropic", id: "claude-sonnet-4.8", name: "Claude Sonnet 4.8" },
+      { provider: "openai-codex", id: "gpt-terra", name: "GPT Terra" },
+    ];
+    const pi: any = {
+      zod: fakeZod(),
+      on(name: string, handler: any) { handlers.set(name, handler); },
+      registerTool(definition: any) { tool = definition; },
+      registerCommand(name: string, definition: any) {
+        if (name === "pi-marg") command = definition;
+      },
+      getAllTools: () => [],
+      appendEntry(type: string, data: any) { entries.push({ type, data }); },
+      sendUserMessage() {},
+      setModel: async () => false,
+    };
+    modelRouter(pi);
+    const branch = [{
+      type: "custom",
+      customType: "co.sangyaa.pi-marg.model-routing.v1",
+      data: {
+        version: 2,
+        workType: 1,
+        selections: { A: previous },
+        fallbacks: {},
+      },
+    }];
+    handlers.get("session_start")?.({}, { sessionManager: { getBranch: () => branch } });
+
+    await command.handler("replace saved", {
+      hasUI: true,
+      models: { list: () => models },
+      ui: {
+        async input() { return undefined; },
+        async select(title: string, options: Array<string | { label: string }>) {
+          return selectFromOptions(title, options, {
+            A: "openai-codex/gpt-astra",
+            C: "anthropic/claude-opus-4.9",
+            B: "openai-codex/gpt-terra",
+            D: "anthropic/claude-sonnet-4.8",
+          }, {
+            high: "anthropic/claude-opus-4.9",
+            low: "openai-codex/gpt-terra",
+          });
+        },
+        notify(message: string, level: string) { notifications.push({ message, level }); },
+      },
+    });
+
+    const status = await tool.execute("1", { action: "status" }, undefined, undefined, {
+      models: { list: () => models },
+    });
+    expect(entries).toHaveLength(0);
+    expect(notifications.some((notice) => notice.message.includes("openai-codex"))).toBe(true);
+    expect(status.content[0].text).toContain("anthropic/claude-opus-4.9");
+    expect(status.content[0].text).not.toContain('"selector": "openai-codex/gpt-astra"');
+  });
 });
+
+function savedSelection(
+  selector: string,
+  label: string,
+  provider: string,
+  identity: string,
+  tier: string,
+  choice: string,
+) {
+  return {
+    selector,
+    identity,
+    label,
+    provider,
+    tier,
+    choice,
+    access: "runtime-model",
+    selectedAt: "2026-01-01T00:00:00.000Z",
+  };
+}
