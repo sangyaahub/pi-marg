@@ -5,7 +5,7 @@ import {
   buildFallbackCatalog,
   buildModelCatalog,
   candidatesForProvider,
-  emptyCatalogSetupMessage,
+  commitIntakeRoute,
   emptyModelRouteState,
   executeAutomaticFailover,
   executeModelRoute,
@@ -13,12 +13,12 @@ import {
   findTerminalUsageLimitFailure,
   formatFailoverRecoveryMessage,
   hasConfiguredFallback,
-  matchNumberedOption,
   modelFailureKey,
   modelToolUsageLimitFailure,
   numberedOptionLabel,
   requiredStagesForWorkType,
-  restoreModelRouteState,
+  resolveSelectAnswer,
+  revalidateSavedRoute,
   uniqueProviders,
   type AutoStage,
   type FallbackLevel,
@@ -26,8 +26,12 @@ import {
   type ModelLike,
   type ModelRouteParams,
   type ModelRouteState,
+  type SelectAnswerResolution,
+  type WorkBoundary,
 } from "../../../core/model-routing";
 import { normalizeCapabilityNames } from "../../../core/runtime-capabilities";
+import { loadRuntimeRoute, rememberRuntimeRoute } from "../../../core/user-route";
+import { configureEmptyCatalog, resolveSingleModel } from "./provider-setup";
 
 const WORK_BOUNDARIES = ["1. Job/client", "2. Personal"] as const;
 
@@ -71,8 +75,66 @@ function commandPrompt(args: string): string {
   return trimmed;
 }
 
+const WORK_BOUNDARY_ITEMS = ["Job/client", "Personal"] as const;
+const WORK_TYPE_ITEMS = [
+  "New idea or development from scratch",
+  "New feature for an existing repository",
+  "Improve an existing feature",
+  "Pro-active bug fix",
+  "Security review or fixes",
+  "Thoughts about an existing repository or features",
+  "Business, sales, or other non-technical analysis",
+] as const;
+const SKILL_MODE_ITEMS = [
+  "Compound Engineering",
+  "Superpowers",
+  "GSD Core",
+  "PiMarg chooses the best available skill",
+] as const;
+
 function optionLabel(candidate: ModelCandidate): string {
   return `${candidate.label} — ${candidate.selector}`;
+}
+
+function savedIndex<T>(items: readonly T[], matches: (item: T) => boolean): number | undefined {
+  const index = items.findIndex(matches);
+  return index >= 0 ? index : undefined;
+}
+
+function takeAnswer<T>(ctx: any, resolution: SelectAnswerResolution<T>): T | undefined {
+  switch (resolution.status) {
+    case "matched":
+      return resolution.item;
+    case "cancelled":
+      ctx.ui.notify("Selection cancelled; no model was saved.", "warning");
+      return undefined;
+    case "conflict":
+      ctx.ui.notify("That answer matches more than one option; no model was saved.", "error");
+      return undefined;
+    case "unrecognized":
+      ctx.ui.notify(`Unrecognized selection ${JSON.stringify(resolution.received)}; no model was saved.`, "error");
+      return undefined;
+    default: {
+      const unreachable: never = resolution;
+      return unreachable;
+    }
+  }
+}
+
+async function askChoice<T>(
+  ctx: any,
+  title: string,
+  items: readonly T[],
+  labelOf: (item: T) => string,
+  options: ReadonlyArray<string | { label: string; description?: string }>,
+  settings: { initialIndex?: number; helpText?: string } = {},
+): Promise<T | undefined> {
+  const answer = await ctx.ui.select(title, [...options], {
+    selectionMarker: "radio",
+    ...(settings.helpText ? { helpText: settings.helpText } : {}),
+    ...(typeof settings.initialIndex === "number" ? { initialIndex: settings.initialIndex } : {}),
+  });
+  return takeAnswer(ctx, resolveSelectAnswer(answer, items, labelOf));
 }
 
 function optionDescription(stage: AutoStage, candidate: ModelCandidate): string {
@@ -86,6 +148,7 @@ async function chooseModel(
   stage: AutoStage,
   candidates: ModelCandidate[],
   selected: Partial<Record<AutoStage, ModelCandidate>>,
+  saved?: ModelCandidate,
 ): Promise<ModelCandidate | undefined> {
   const opposite: Record<AutoStage, AutoStage> = { A: "C", C: "A", B: "D", D: "B" };
   const other = selected[opposite[stage]];
@@ -98,13 +161,14 @@ async function chooseModel(
     return undefined;
   }
 
+  const highlighted = saved && eligible.some((candidate) => candidate.selector === saved.selector) ? saved : undefined;
   return chooseCandidateByProvider(ctx, eligible, {
     providerTitle: `Stage ${stage} provider`,
     modelTitle: `Stage ${stage} model`,
     purpose: STAGE_PURPOSE[stage],
     providerDescription: (name) => `All authenticated ${name} models for ${STAGE_PURPOSE[stage]}`,
     modelDescription: (candidate) => optionDescription(stage, candidate),
-  });
+  }, highlighted);
 }
 
 async function chooseFallbackModel(
@@ -112,6 +176,7 @@ async function chooseFallbackModel(
   level: FallbackLevel,
   candidates: ModelCandidate[],
   other?: ModelCandidate,
+  saved?: ModelCandidate,
 ): Promise<ModelCandidate | undefined> {
   const eligible = candidates.filter((candidate) => (
     candidate.access === "runtime-model" && (!other || candidate.identity !== other.identity)
@@ -125,6 +190,7 @@ async function chooseFallbackModel(
     return undefined;
   }
 
+  const highlighted = saved && eligible.some((candidate) => candidate.selector === saved.selector) ? saved : undefined;
   return chooseCandidateByProvider(ctx, eligible, {
     providerTitle: `${title} backup provider`,
     modelTitle: `${title} backup model`,
@@ -133,7 +199,7 @@ async function chooseFallbackModel(
     modelDescription: (candidate) => (
       `${FALLBACK_PURPOSE[level]}${candidate.billingNote ? ` · ${candidate.billingNote}` : ""}`
     ),
-  });
+  }, highlighted);
 }
 
 async function chooseCandidateByProvider(
@@ -146,20 +212,23 @@ async function chooseCandidateByProvider(
     providerDescription(provider: string): string;
     modelDescription(candidate: ModelCandidate): string;
   },
+  saved?: ModelCandidate,
 ): Promise<ModelCandidate | undefined> {
   const providers = uniqueProviders(candidates);
   const providerOptions = providers.map((name, index) => ({
     label: numberedOptionLabel(index, `${name} (${candidatesForProvider(candidates, name).length})`),
     description: copy.providerDescription(name),
   }));
-  const providerAnswer = await ctx.ui.select(copy.providerTitle, providerOptions, {
-    selectionMarker: "radio",
-    helpText: `${providers.length} providers · ${candidates.length} models · ${copy.purpose}`,
-  });
-  const provider = matchNumberedOption(
-    providerAnswer,
+  const provider = await askChoice(
+    ctx,
+    copy.providerTitle,
     providers,
     (name) => `${name} (${candidatesForProvider(candidates, name).length})`,
+    providerOptions,
+    {
+      initialIndex: saved ? savedIndex(providers, (name) => name === saved.provider) : undefined,
+      helpText: `${providers.length} providers · ${candidates.length} models · ${copy.purpose}`,
+    },
   );
   if (!provider) return undefined;
 
@@ -168,29 +237,11 @@ async function chooseCandidateByProvider(
     label: numberedOptionLabel(index, optionLabel(candidate)),
     description: copy.modelDescription(candidate),
   }));
-  const answer = await ctx.ui.select(copy.modelTitle, modelOptions, {
-    selectionMarker: "radio",
-    helpText: `${providerModels.length} ${provider} choices · ${copy.purpose}`,
+  const savedHere = saved?.provider === provider ? saved.selector : undefined;
+  return askChoice(ctx, copy.modelTitle, providerModels, optionLabel, modelOptions, {
+    initialIndex: savedHere ? savedIndex(providerModels, (candidate) => candidate.selector === savedHere) : undefined,
+    helpText: `${providerModels.length} ${provider} choices · ${copy.purpose}${savedHere ? ` · saved ${savedHere}` : ""}`,
   });
-  return matchNumberedOption(answer, providerModels, optionLabel);
-}
-
-function selectedState(
-  workType: number,
-  selected: Partial<Record<AutoStage, ModelCandidate>>,
-  fallbacks: Record<FallbackLevel, ModelCandidate>,
-): ModelRouteState {
-  const selectedAt = new Date().toISOString();
-  return {
-    version: 2,
-    workType,
-    selections: Object.fromEntries(
-      Object.entries(selected).map(([stage, candidate]) => [stage, { ...candidate, selectedAt }]),
-    ) as ModelRouteState["selections"],
-    fallbacks: Object.fromEntries(
-      Object.entries(fallbacks).map(([level, candidate]) => [level, { ...candidate, selectedAt }]),
-    ) as ModelRouteState["fallbacks"],
-  };
 }
 
 function intakeMessage(
@@ -227,11 +278,20 @@ export default function modelRouter(pi: any) {
   let recoveryToken: symbol | undefined;
   let sessionGeneration = 0;
   let pendingToolFailure: { selector: string; key: string } | undefined;
+  const routeHome = (ctx: any) => typeof ctx?.agentHome === "string" ? ctx.agentHome : undefined;
+  const persistRoute = (nextState: ModelRouteState, ctx?: any) => {
+    pi.appendEntry(MODEL_STATE_TYPE, nextState);
+    try {
+      rememberRuntimeRoute("OMP", nextState, routeHome(ctx));
+    } catch {
+      ctx?.ui?.notify?.("PiMarg saved the route in this session, but could not update the user route file.", "warning");
+    }
+  };
   const restore = (_event: unknown, ctx: any) => {
     sessionGeneration += 1;
     recoveryToken = undefined;
     pendingToolFailure = undefined;
-    state = restoreModelRouteState(ctx.sessionManager.getBranch());
+    state = loadRuntimeRoute("OMP", ctx.sessionManager.getBranch(), routeHome(ctx));
   };
 
   pi.on("session_start", restore);
@@ -253,7 +313,7 @@ export default function modelRouter(pi: any) {
         activate: (model) => pi.setModel(model),
         persist: (nextState) => {
           if (sessionGeneration !== generation) throw new Error("session changed during automatic recovery");
-          pi.appendEntry(MODEL_STATE_TYPE, nextState);
+          persistRoute(nextState, ctx);
         },
       }, failure.key);
       if (sessionGeneration !== generation) {
@@ -348,43 +408,167 @@ export default function modelRouter(pi: any) {
       }
       if (!request) return;
 
-      const boundaryLabel = await ctx.ui.select("Work boundary", [...WORK_BOUNDARIES], {
-        selectionMarker: "radio",
-      });
-      const boundary = matchNumberedOption(boundaryLabel, ["Job/client", "Personal"], (item) => item);
+      const boundary = await askChoice(
+        ctx,
+        "Work boundary",
+        WORK_BOUNDARY_ITEMS,
+        (item) => item,
+        WORK_BOUNDARIES,
+        { initialIndex: savedIndex(WORK_BOUNDARY_ITEMS, (item) => item === state.boundary) },
+      );
       if (!boundary) return;
 
-      const workTypeLabel = await ctx.ui.select("Work type", [...WORK_TYPES], { selectionMarker: "radio" });
-      const workType = Number.parseInt(workTypeLabel?.match(/^([1-7])\./)?.[1] ?? "", 10);
-      if (!Number.isInteger(workType)) return;
+      const workTypeItem = await askChoice(
+        ctx,
+        "Work type",
+        WORK_TYPE_ITEMS,
+        (item) => item,
+        WORK_TYPES,
+        {
+          initialIndex: typeof state.workType === "number" && state.workType >= 1 && state.workType <= WORK_TYPE_ITEMS.length
+            ? state.workType - 1
+            : undefined,
+        },
+      );
+      if (!workTypeItem) return;
+      const workType = WORK_TYPE_ITEMS.indexOf(workTypeItem) + 1;
+      const workTypeLabel = WORK_TYPES[workType - 1]!;
 
-      const skillMode = await ctx.ui.select("Workflow skill", [...SKILL_MODES], { selectionMarker: "radio" });
-      if (!skillMode) return;
+      const skillItem = await askChoice(
+        ctx,
+        "Workflow skill",
+        SKILL_MODE_ITEMS,
+        (item) => item,
+        SKILL_MODES,
+        { initialIndex: savedIndex(SKILL_MODES, (item) => item === state.skillMode) },
+      );
+      if (!skillItem) return;
+      const skillMode = SKILL_MODES[SKILL_MODE_ITEMS.indexOf(skillItem)]!;
 
-      const liveModels = ctx.models.list() as ModelLike[];
+      const home = routeHome(ctx);
+      const pauseForRestart = () => {
+        rememberRuntimeRoute("OMP", {
+          version: 2,
+          workType,
+          boundary,
+          skillMode,
+          selections: {},
+          fallbacks: {},
+        }, home);
+        ctx.ui.notify(
+          "Restart OMP so it reloads models.yml, then run /pi-marg again. Work type and skill answers are saved and model selection will resume.",
+          "warning",
+        );
+      };
+      let liveModels = ctx.models.list() as ModelLike[];
       if (liveModels.length === 0) {
-        ctx.ui.notify(emptyCatalogSetupMessage("OMP"), "error");
-        return;
+        const setup = await configureEmptyCatalog(ctx, home);
+        if (setup.status === "restart") {
+          pauseForRestart();
+          return;
+        }
+        if (setup.status !== "ready") return;
+        liveModels = setup.models;
       }
+
+      let stopBeforePair = false;
+      if (liveModels.length === 1) {
+        const decision = await resolveSingleModel(ctx, home);
+        if (decision === "defer") {
+          stopBeforePair = true;
+        } else if (decision.status === "restart") {
+          pauseForRestart();
+          return;
+        } else if (decision.status !== "ready") {
+          return;
+        } else {
+          liveModels = decision.models;
+        }
+      }
+
       const catalog = buildModelCatalog(liveModels, hasExternalDevin(pi));
       const fallbackCatalog = buildFallbackCatalog(catalog);
+      const availability = revalidateSavedRoute(state, liveModels, hasExternalDevin(pi));
       const selected: Partial<Record<AutoStage, ModelCandidate>> = {};
-      for (const stage of requiredStagesForWorkType(workType)) {
-        const choice = await chooseModel(ctx, stage, catalog[stage], selected);
+      const stages = requiredStagesForWorkType(workType);
+      const oppositeStage: Record<AutoStage, AutoStage> = { A: "C", C: "A", B: "D", D: "B" };
+      for (const stage of stages) {
+        if (stopBeforePair && selected[oppositeStage[stage]]) {
+          ctx.ui.notify(
+            `Stage ${stage} needs a different model from Stage ${oppositeStage[stage]}. Stopping before that paired stage; nothing was saved as a complete route.`,
+            "warning",
+          );
+          return;
+        }
+        const savedChoice = availability.selections[stage];
+        if (savedChoice?.status === "missing") {
+          ctx.ui.notify(
+            `Saved Stage ${stage} selector ${savedChoice.selection.selector} is missing from the live catalog. Choose a replacement.`,
+            "warning",
+          );
+        }
+        const choice = await chooseModel(
+          ctx,
+          stage,
+          catalog[stage],
+          selected,
+          savedChoice?.status === "present" ? savedChoice.selection : undefined,
+        );
         if (!choice) return;
         selected[stage] = choice;
       }
 
-      const high = await chooseFallbackModel(ctx, "high", fallbackCatalog.high);
+      const savedHigh = availability.fallbacks.high;
+      if (savedHigh?.status === "missing") {
+        ctx.ui.notify(
+          `Saved high backup ${savedHigh.selection.selector} is missing from the live catalog. Choose a replacement.`,
+          "warning",
+        );
+      }
+      const high = await chooseFallbackModel(
+        ctx,
+        "high",
+        fallbackCatalog.high,
+        undefined,
+        savedHigh?.status === "present" ? savedHigh.selection : undefined,
+      );
       if (!high) return;
-      const low = await chooseFallbackModel(ctx, "low", fallbackCatalog.low, high);
+      const savedLow = availability.fallbacks.low;
+      if (savedLow?.status === "missing") {
+        ctx.ui.notify(
+          `Saved low backup ${savedLow.selection.selector} is missing from the live catalog. Choose a replacement.`,
+          "warning",
+        );
+      }
+      const low = await chooseFallbackModel(
+        ctx,
+        "low",
+        fallbackCatalog.low,
+        high,
+        savedLow?.status === "present" ? savedLow.selection : undefined,
+      );
       if (!low) return;
-      const fallbacks = { high, low };
 
-      const nextState = selectedState(workType, selected, fallbacks);
-      state = nextState;
-      pi.appendEntry(MODEL_STATE_TYPE, nextState);
-      pi.sendUserMessage(intakeMessage(request, boundary, workTypeLabel!, skillMode, selected, fallbacks));
+      const committed = await commitIntakeRoute(state, {
+        workType,
+        boundary: boundary as WorkBoundary,
+        skillMode,
+        selections: selected,
+        fallbacks: { high, low },
+        activateStage: stages[0]!,
+      }, {
+        runtimeName: "OMP",
+        models: liveModels,
+        hasExternalDevin: hasExternalDevin(pi),
+        activate: (model) => pi.setModel(model),
+        persist: (nextState) => persistRoute(nextState, ctx),
+      });
+      if (committed.error) {
+        ctx.ui.notify(committed.error, "error");
+        return;
+      }
+      state = committed.state;
+      pi.sendUserMessage(intakeMessage(request, boundary, workTypeLabel, skillMode, selected, { high, low }));
     },
   });
 
@@ -407,7 +591,7 @@ export default function modelRouter(pi: any) {
         models,
         hasExternalDevin: hasExternalDevin(pi),
         activate: (model) => pi.setModel(model),
-        persist: (nextState) => pi.appendEntry(MODEL_STATE_TYPE, nextState),
+        persist: (nextState) => persistRoute(nextState, ctx),
       });
       state = execution.state;
       return execution.response;

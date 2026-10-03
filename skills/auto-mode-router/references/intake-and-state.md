@@ -125,6 +125,8 @@ ledger: <path>
 
 Reuse this state for normal follow-ups. Start over only when the user explicitly resets it or introduces a materially different outcome.
 
+The v2 model route persists `boundary` (`Job/client` or `Personal`) and `skillMode` with the A/B/C/D selectors and backups. Reopening `/pi-marg` highlights those saved values. The conversational `context:` and `mode:` lines above are the same facts in the ledger's shorthand; they are not a second configuration store.
+
 ## Availability check
 
 Before declaring the task ready:

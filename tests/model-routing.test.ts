@@ -4,6 +4,7 @@ import {
   MODEL_STATE_TYPE,
   buildModelCatalog,
   emptyModelRouteState,
+  commitIntakeRoute,
   executeAutomaticFailover,
   executeModelRoute,
   findTerminalUsageLimitFailure,
@@ -12,6 +13,8 @@ import {
   isUsageLimitErrorText,
   matchNumberedOption,
   modelToolUsageLimitFailure,
+  resolveSelectAnswer,
+  revalidateSavedRoute,
   normalizeModelIdentity,
   numberedOptionLabel,
   requiredStagesForWorkType,
@@ -451,6 +454,184 @@ describe("model routing", () => {
     expect(numberedOptionLabel(0, items[0]!)).toBe("1. Job/client");
     expect(matchNumberedOption("2. Personal", items, (item) => item)).toBe("Personal");
     expect(matchNumberedOption("Personal", items, (item) => item)).toBeUndefined();
+  });
+
+  test("resolves a raw select label and rejects an ambiguous one", () => {
+    const items = ["Job/client", "Personal"];
+    expect(resolveSelectAnswer("Personal", items, (item) => item)).toEqual({
+      status: "matched",
+      item: "Personal",
+    });
+    expect(resolveSelectAnswer("2. Personal", items, (item) => item)).toEqual({
+      status: "matched",
+      item: "Personal",
+    });
+    expect(resolveSelectAnswer("Personal (2)", ["Personal", "Personal"], (item) => item)).toEqual({
+      status: "conflict",
+    });
+    expect(resolveSelectAnswer(undefined, items, (item) => item)).toEqual({ status: "cancelled" });
+    expect(resolveSelectAnswer("Nope", items, (item) => item)).toEqual({
+      status: "unrecognized",
+      received: "Nope",
+    });
+  });
+
+  test("reports a missing saved selector without remapping a present one", () => {
+    const savedA: ModelRouteState["selections"]["A"] = {
+      selector: "openai-codex/gpt-astra",
+      identity: "gpt-astra",
+      label: "GPT Astra",
+      provider: "openai-codex",
+      tier: "frontier",
+      choice: "openai-frontier",
+      access: "runtime-model",
+      selectedAt: "2026-01-01T00:00:00.000Z",
+    };
+    const savedC: ModelRouteState["selections"]["C"] = {
+      selector: "missing/gone-model",
+      identity: "gone-model",
+      label: "Gone",
+      provider: "missing",
+      tier: "frontier",
+      choice: "runtime-available",
+      access: "runtime-model",
+      selectedAt: "2026-01-01T00:00:00.000Z",
+    };
+    const state: ModelRouteState = {
+      version: 2,
+      selections: { A: savedA, C: savedC },
+      fallbacks: {},
+    };
+    const availability = revalidateSavedRoute(state, [
+      { provider: "openai-codex", id: "gpt-astra", name: "GPT Astra" },
+    ], false);
+
+    expect(availability.selections.A).toEqual({ status: "present", selection: savedA });
+    expect(availability.selections.C).toEqual({ status: "missing", selection: savedC });
+  });
+
+  test("shows a missing saved selector in status and leaves a present selector unchanged", async () => {
+    const savedA: ModelRouteState["selections"]["A"] = {
+      selector: "openai-codex/gpt-astra",
+      identity: "gpt-astra",
+      label: "GPT Astra",
+      provider: "openai-codex",
+      tier: "frontier",
+      choice: "openai-frontier",
+      access: "runtime-model",
+      selectedAt: "2026-01-01T00:00:00.000Z",
+    };
+    const state: ModelRouteState = {
+      version: 2,
+      selections: {
+        A: savedA,
+        C: {
+          selector: "missing/gone-model",
+          identity: "gone-model",
+          label: "Gone",
+          provider: "missing",
+          tier: "frontier",
+          choice: "runtime-available",
+          access: "runtime-model",
+          selectedAt: "2026-01-01T00:00:00.000Z",
+        },
+      },
+      fallbacks: {},
+    };
+    const execution = await executeModelRoute(state, { action: "status" }, {
+      runtimeName: "OMP",
+      models: [{ provider: "openai-codex", id: "gpt-astra", name: "GPT Astra" }],
+      hasExternalDevin: false,
+      activate: async () => true,
+      persist() {},
+    });
+    const text = execution.response.content[0]?.text ?? "";
+    expect(text).toContain('"status": "missing"');
+    expect(text).toContain("openai-codex/gpt-astra");
+    expect(execution.state.selections.A).toEqual(savedA);
+    expect(execution.state.selections.C?.selector).toBe("missing/gone-model");
+  });
+
+  test("persists intake only after the first stage model activates", async () => {
+    const live: ModelLike[] = [
+      { provider: "openai-codex", id: "gpt-astra", name: "GPT Astra" },
+      { provider: "anthropic", id: "claude-opus-4.9", name: "Claude Opus 4.9" },
+    ];
+    const catalog = buildModelCatalog(live, false);
+    const stageA = catalog.A.find((item) => item.selector === "openai-codex/gpt-astra");
+    const stageC = catalog.A.find((item) => item.selector === "anthropic/claude-opus-4.9");
+    const previous = emptyModelRouteState();
+    const persisted: ModelRouteState[] = [];
+    const activated: string[] = [];
+    const result = await commitIntakeRoute(previous, {
+      workType: 1,
+      boundary: "Personal",
+      skillMode: "1. Compound Engineering",
+      selections: { A: stageA!, C: stageC! },
+      fallbacks: { high: stageC!, low: stageA! },
+      activateStage: "A",
+    }, {
+      runtimeName: "OMP",
+      models: live,
+      hasExternalDevin: false,
+      now: () => "2026-01-02T00:00:00.000Z",
+      activate: async (model) => {
+        activated.push(`${model.provider}/${model.id}`);
+        return true;
+      },
+      persist(next) { persisted.push(next); },
+    });
+
+    expect(activated).toEqual(["openai-codex/gpt-astra"]);
+    expect(persisted).toHaveLength(1);
+    expect(result.error).toBeUndefined();
+    expect(result.state.selections.A?.selector).toBe("openai-codex/gpt-astra");
+    expect(result.state.activeStage).toBe("A");
+  });
+
+  test("keeps the previous route when intake activation fails or throws", async () => {
+    const live: ModelLike[] = [
+      { provider: "openai-codex", id: "gpt-astra", name: "GPT Astra" },
+    ];
+    const catalog = buildModelCatalog(live, false);
+    const stageA = catalog.A.find((item) => item.selector === "openai-codex/gpt-astra")!;
+    const previous: ModelRouteState = {
+      version: 2,
+      selections: {
+        A: { ...stageA, selectedAt: "2026-01-01T00:00:00.000Z" },
+      },
+      fallbacks: {},
+    };
+    const persisted: ModelRouteState[] = [];
+    const intake = {
+      workType: 1,
+      selections: { A: stageA, C: { ...stageA, selector: "other/model", identity: "other-model" } },
+      fallbacks: { high: stageA, low: { ...stageA, selector: "other/low", identity: "other-low" } },
+      activateStage: "A" as const,
+    };
+    const port = {
+      runtimeName: "OMP" as const,
+      models: live,
+      hasExternalDevin: false,
+      persist(next: ModelRouteState) { persisted.push(next); },
+    };
+
+    const refused = await commitIntakeRoute(previous, intake, {
+      ...port,
+      activate: async () => false,
+    });
+    const thrown = await commitIntakeRoute(previous, intake, {
+      ...port,
+      activate: async () => {
+        throw new Error("provider auth failed");
+      },
+    });
+
+    expect(persisted).toHaveLength(0);
+    expect(refused.state).toBe(previous);
+    expect(refused.error).toContain("openai-codex");
+    expect(thrown.state).toBe(previous);
+    expect(thrown.error).toContain("openai-codex");
   });
 
   test("presents providers first and lists every model when provider-filtered", async () => {

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.6 — 2026-10-03
+
+- Reopening `/pi-marg` highlights the saved boundary, work type, skill, and A/B/C/D selectors. Enter keeps that row, and intake activates the first required stage model before the work message is sent.
+- A saved route now survives a new OMP or Pi process. A selector that disappeared from the live catalog is reported missing and is not remapped or activated.
+- An empty OMP catalog can sign in, add a custom OpenAI-compatible provider, or cancel. Provider files store the env var name, and the secret is written only to the runtime `.env`.
+
 ## 1.0.5 — 2026-09-26
 
 - Documented how to register CheaperInference in Oh My Pi so Kimi and GLM models can be chosen at every A/B/C/D stage.

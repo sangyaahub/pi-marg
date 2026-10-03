@@ -36,9 +36,13 @@ export interface ModelSelection extends ModelCandidate {
   selectedAt: string;
 }
 
+export type WorkBoundary = "Job/client" | "Personal";
+
 export interface ModelRouteState {
   version: 2;
   workType?: number;
+  boundary?: WorkBoundary;
+  skillMode?: string;
   selections: Partial<Record<AutoStage, ModelSelection>>;
   fallbacks: Partial<Record<FallbackLevel, ModelSelection>>;
   activeStage?: AutoStage;
@@ -370,6 +374,38 @@ export function buildFallbackCatalog(catalog: Record<AutoStage, ModelCandidate[]
   } satisfies Record<FallbackLevel, ModelCandidate[]>;
 }
 
+export interface SavedChoiceAvailability {
+  status: "present" | "missing";
+  selection: ModelSelection;
+}
+
+export function revalidateSavedRoute(
+  state: ModelRouteState,
+  models: readonly ModelLike[],
+  hasExternalDevin: boolean,
+): {
+  selections: Partial<Record<AutoStage, SavedChoiceAvailability>>;
+  fallbacks: Partial<Record<FallbackLevel, SavedChoiceAvailability>>;
+} {
+  const catalog = buildModelCatalog([...models], hasExternalDevin);
+  const fallbackCatalog = buildFallbackCatalog(catalog);
+  const selections: Partial<Record<AutoStage, SavedChoiceAvailability>> = {};
+  for (const stage of STAGES) {
+    const selection = state.selections[stage];
+    if (!selection) continue;
+    const live = catalog[stage].some((item) => item.selector === selection.selector);
+    selections[stage] = { status: live ? "present" : "missing", selection };
+  }
+  const fallbacks: Partial<Record<FallbackLevel, SavedChoiceAvailability>> = {};
+  for (const level of FALLBACK_LEVELS) {
+    const selection = state.fallbacks[level];
+    if (!selection) continue;
+    const live = fallbackCatalog[level].some((item) => item.selector === selection.selector);
+    fallbacks[level] = { status: live ? "present" : "missing", selection };
+  }
+  return { selections, fallbacks };
+}
+
 export function numberedOptionLabel(index: number, text: string): string {
   return `${index + 1}. ${text}`;
 }
@@ -381,6 +417,42 @@ export function matchNumberedOption<T>(
 ): T | undefined {
   if (!answer) return undefined;
   return items.find((item, index) => numberedOptionLabel(index, labelOf(item)) === answer);
+}
+
+export type SelectAnswerResolution<T> =
+  | { status: "cancelled" }
+  | { status: "matched"; item: T }
+  | { status: "conflict" }
+  | { status: "unrecognized"; received: string };
+
+const DISAMBIGUATION_SUFFIX = /^(?: \(\d+\)| · .+)$/;
+
+export function resolveSelectAnswer<T>(
+  answer: string | undefined,
+  items: readonly T[],
+  labelOf: (item: T) => string,
+): SelectAnswerResolution<T> {
+  if (answer === undefined) return { status: "cancelled" };
+  const received = answer.trim();
+  if (!received) return { status: "cancelled" };
+
+  const numbered = items.filter((item, index) => numberedOptionLabel(index, labelOf(item)) === received);
+  if (numbered.length > 1) return { status: "conflict" };
+  if (numbered.length === 1) return { status: "matched", item: numbered[0]! };
+
+  const exact = items.filter((item) => labelOf(item) === received);
+  if (exact.length > 1) return { status: "conflict" };
+  if (exact.length === 1) return { status: "matched", item: exact[0]! };
+
+  const suffixed = items.filter((item) => {
+    const label = labelOf(item);
+    if (!received.startsWith(label) || received.length === label.length) return false;
+    return DISAMBIGUATION_SUFFIX.test(received.slice(label.length));
+  });
+  if (suffixed.length > 1) return { status: "conflict" };
+  if (suffixed.length === 1) return { status: "matched", item: suffixed[0]! };
+
+  return { status: "unrecognized", received };
 }
 
 export function uniqueProviders(candidates: readonly ModelCandidate[]): string[] {
@@ -621,6 +693,59 @@ export async function executeAutomaticFailover(
   };
 }
 
+export interface IntakeRouteDraft {
+  workType: number;
+  boundary?: WorkBoundary;
+  skillMode?: string;
+  selections: Partial<Record<AutoStage, ModelCandidate>>;
+  fallbacks: Record<FallbackLevel, ModelCandidate>;
+  activateStage: AutoStage;
+}
+
+export async function commitIntakeRoute(
+  currentState: ModelRouteState,
+  intake: IntakeRouteDraft,
+  port: ModelRoutePort,
+): Promise<{ state: ModelRouteState; error?: string }> {
+  const selected = intake.selections[intake.activateStage];
+  if (!selected) {
+    return { state: currentState, error: `Stage ${intake.activateStage} has no model to activate.` };
+  }
+  if (selected.access === "runtime-model") {
+    const model = port.models.find((item) => `${item.provider}/${item.id}` === selected.selector);
+    const failure = `Could not activate ${selected.selector}; verify ${selected.provider} authentication.`;
+    if (!model) return { state: currentState, error: failure };
+    try {
+      const activated = await port.activate(model);
+      if (activated === false) return { state: currentState, error: failure };
+    } catch {
+      return { state: currentState, error: failure };
+    }
+  }
+
+  const selectedAt = port.now?.() ?? new Date().toISOString();
+  const selections = Object.fromEntries(
+    Object.entries(intake.selections).map(([stage, candidate]) => [stage, { ...candidate, selectedAt }]),
+  ) as ModelRouteState["selections"];
+  const fallbacks = Object.fromEntries(
+    Object.entries(intake.fallbacks).map(([level, candidate]) => [level, { ...candidate, selectedAt }]),
+  ) as ModelRouteState["fallbacks"];
+  const nextState: ModelRouteState = {
+    version: 2,
+    workType: intake.workType,
+    boundary: intake.boundary,
+    skillMode: intake.skillMode,
+    selections,
+    fallbacks,
+    activeStage: intake.activateStage,
+    activeFallback: undefined,
+    exhaustedSelectors: [],
+    handledFailureKeys: [],
+  };
+  port.persist(nextState);
+  return { state: nextState };
+}
+
 export async function executeModelRoute(
   currentState: ModelRouteState,
   params: ModelRouteParams,
@@ -670,7 +795,14 @@ export async function executeModelRoute(
   }
 
   if (params.action === "status") {
-    return { state: currentState, response: toolResult(JSON.stringify(currentState, null, 2), { state: currentState }) };
+    const availability = revalidateSavedRoute(currentState, port.models, port.hasExternalDevin);
+    return {
+      state: currentState,
+      response: toolResult(
+        JSON.stringify({ ...currentState, availability }, null, 2),
+        { state: currentState, availability },
+      ),
+    };
   }
 
   if (params.action === "select_fallback") {

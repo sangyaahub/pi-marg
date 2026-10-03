@@ -1,4 +1,9 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, mock, test } from "bun:test";
+
+process.env.PI_MARG_AGENT_HOME = mkdtempSync(join(tmpdir(), "pi-marg-pi-"));
 
 describe("Pi model router failover", () => {
   test("switches to the saved high backup and queues a continuation", async () => {
