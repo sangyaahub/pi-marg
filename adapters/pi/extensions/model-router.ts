@@ -12,10 +12,10 @@ import {
   hasConfiguredFallback,
   modelFailureKey,
   modelToolUsageLimitFailure,
-  restoreModelRouteState,
   type ModelLike,
   type ModelRouteParams,
 } from "../../../core/model-routing";
+import { loadRuntimeRoute, rememberRuntimeRoute } from "../../../core/user-route";
 
 function toolNames(pi: any): string[] {
   return (pi.getAllTools?.() ?? [])
@@ -38,12 +38,21 @@ export default function modelRouter(pi: any) {
   let sessionGeneration = 0;
   let pendingModelFailure: { selector: string; key: string } | undefined;
   let pendingToolFailure: { selector: string; key: string } | undefined;
+  const routeHome = (ctx: any) => typeof ctx?.agentHome === "string" ? ctx.agentHome : undefined;
+  const persistRoute = (nextState: Parameters<typeof rememberRuntimeRoute>[1], ctx?: any) => {
+    pi.appendEntry(MODEL_STATE_TYPE, nextState);
+    try {
+      rememberRuntimeRoute("Pi", nextState, routeHome(ctx));
+    } catch {
+      ctx?.ui?.notify?.("PiMarg saved the route in this session, but could not update the user route file.", "warning");
+    }
+  };
   const restore = (_event: unknown, ctx: any) => {
     sessionGeneration += 1;
     recoveryToken = undefined;
     pendingModelFailure = undefined;
     pendingToolFailure = undefined;
-    state = restoreModelRouteState(ctx.sessionManager.getBranch());
+    state = loadRuntimeRoute("Pi", ctx.sessionManager.getBranch(), routeHome(ctx));
   };
 
   pi.on("session_start", restore);
@@ -63,7 +72,7 @@ export default function modelRouter(pi: any) {
         activate: (model) => pi.setModel(model),
         persist: (nextState) => {
           if (sessionGeneration !== generation) throw new Error("session changed during automatic recovery");
-          pi.appendEntry(MODEL_STATE_TYPE, nextState);
+          persistRoute(nextState, ctx);
         },
       }, failure.key);
       if (sessionGeneration !== generation) {
@@ -162,7 +171,7 @@ export default function modelRouter(pi: any) {
         models,
         hasExternalDevin: hasExternalDevin(pi),
         activate: (model) => pi.setModel(model),
-        persist: (nextState) => pi.appendEntry(MODEL_STATE_TYPE, nextState),
+        persist: (nextState) => persistRoute(nextState, ctx),
       });
       state = execution.state;
       return execution.response;

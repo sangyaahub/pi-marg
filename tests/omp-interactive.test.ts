@@ -1,6 +1,12 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 
 import modelRouter from "../adapters/omp/extensions/model-router";
+import { userRoutePath, writeUserRoute } from "../core/user-route";
+
+process.env.PI_MARG_AGENT_HOME = mkdtempSync(join(tmpdir(), "pi-marg-omp-"));
 
 function schema() {
   return { optional() { return this; } };
@@ -1013,6 +1019,170 @@ describe("OMP interactive PiMarg command", () => {
     expect(notifications.some((notice) => notice.message.includes("openai-codex"))).toBe(true);
     expect(status.content[0].text).toContain("anthropic/claude-opus-4.9");
     expect(status.content[0].text).not.toContain('"selector": "openai-codex/gpt-astra"');
+  });
+
+  test("loads a user route when the new process has an empty session branch", async () => {
+    let command: any;
+    const handlers = new Map<string, any>();
+    const selectCalls: Array<{ title: string; initialIndex?: number }> = [];
+    const home = mkdtempSync(join(tmpdir(), "pi-marg-user-route-"));
+    writeUserRoute(userRoutePath("OMP", home), {
+      version: 2,
+      workType: 2,
+      boundary: "Personal",
+      skillMode: "1. Compound Engineering",
+      selections: {
+        A: savedSelection("openai-codex/gpt-astra", "GPT Astra", "openai-codex", "gpt-astra", "frontier", "openai-frontier"),
+      },
+      fallbacks: {},
+    });
+    const pi: any = {
+      zod: fakeZod(),
+      on(name: string, handler: any) { handlers.set(name, handler); },
+      registerTool() {},
+      registerCommand(name: string, definition: any) {
+        if (name === "pi-marg") command = definition;
+      },
+      getAllTools: () => [],
+      appendEntry() {},
+      sendUserMessage() {},
+      setModel: async () => true,
+    };
+    modelRouter(pi);
+    handlers.get("session_start")?.({}, {
+      agentHome: home,
+      sessionManager: { getBranch: () => [] },
+    });
+
+    await command.handler("resume", {
+      hasUI: true,
+      agentHome: home,
+      models: {
+        list: () => [
+          { provider: "anthropic", id: "claude-opus-4.9", name: "Claude Opus 4.9" },
+          { provider: "openai-codex", id: "gpt-astra-9", name: "GPT Astra 9" },
+          { provider: "openai-codex", id: "gpt-astra", name: "GPT Astra" },
+        ],
+      },
+      ui: {
+        async input() { return undefined; },
+        async select(title: string, options: Array<string | { label: string }>, settings?: { initialIndex?: number }) {
+          const labels = options.map((option) => typeof option === "string" ? option : option.label);
+          selectCalls.push({ title, initialIndex: settings?.initialIndex });
+          if (title === "Stage B provider") return undefined;
+          const index = typeof settings?.initialIndex === "number" ? settings.initialIndex : 0;
+          return labels[index];
+        },
+        notify() {},
+      },
+    });
+
+    expect(selectCalls.find((call) => call.title === "Stage A provider")?.initialIndex).toBeGreaterThan(0);
+    expect(selectCalls.find((call) => call.title === "Stage A model")?.initialIndex).toBeGreaterThan(0);
+  });
+
+  test("starts from an empty route when the user file is corrupt", async () => {
+    let command: any;
+    const handlers = new Map<string, any>();
+    const home = mkdtempSync(join(tmpdir(), "pi-marg-corrupt-route-"));
+    writeUserRoute(userRoutePath("OMP", home), { version: 2, selections: {}, fallbacks: {} });
+    writeFileSync(userRoutePath("OMP", home), "{not json");
+    const pi: any = {
+      zod: fakeZod(),
+      on(name: string, handler: any) { handlers.set(name, handler); },
+      registerTool() {},
+      registerCommand(name: string, definition: any) {
+        if (name === "pi-marg") command = definition;
+      },
+      getAllTools: () => [],
+      appendEntry() {},
+      sendUserMessage() {},
+      setModel: async () => true,
+    };
+    modelRouter(pi);
+    expect(() => handlers.get("session_start")?.({}, {
+      agentHome: home,
+      sessionManager: { getBranch: () => [] },
+    })).not.toThrow();
+
+    const selectCalls: Array<{ title: string; initialIndex?: number }> = [];
+    await command.handler("fresh", {
+      hasUI: true,
+      agentHome: home,
+      models: {
+        list: () => [
+          { provider: "anthropic", id: "claude-opus-4.9", name: "Claude Opus 4.9" },
+          { provider: "openai-codex", id: "gpt-astra", name: "GPT Astra" },
+        ],
+      },
+      ui: {
+        async input() { return undefined; },
+        async select(title: string, _options: unknown, settings?: { initialIndex?: number }) {
+          selectCalls.push({ title, initialIndex: settings?.initialIndex });
+          return undefined;
+        },
+        notify() {},
+      },
+    });
+
+    expect(selectCalls.find((call) => call.title === "Work boundary")?.initialIndex).toBeUndefined();
+  });
+
+  test("reports a saved model removed from the catalog and does not activate it", async () => {
+    let command: any;
+    const handlers = new Map<string, any>();
+    const notifications: Array<{ message: string; level: string }> = [];
+    const activations: string[] = [];
+    const home = mkdtempSync(join(tmpdir(), "pi-marg-missing-route-"));
+    writeUserRoute(userRoutePath("OMP", home), {
+      version: 2,
+      workType: 1,
+      selections: {
+        A: savedSelection("missing/gone-model", "Gone", "missing", "gone-model", "frontier", "runtime-available"),
+      },
+      fallbacks: {},
+    });
+    const pi: any = {
+      zod: fakeZod(),
+      on(name: string, handler: any) { handlers.set(name, handler); },
+      registerTool() {},
+      registerCommand(name: string, definition: any) {
+        if (name === "pi-marg") command = definition;
+      },
+      getAllTools: () => [],
+      appendEntry() {},
+      sendUserMessage() {},
+      async setModel(model: any) { activations.push(`${model.provider}/${model.id}`); return true; },
+    };
+    modelRouter(pi);
+    handlers.get("session_start")?.({}, {
+      agentHome: home,
+      sessionManager: { getBranch: () => [] },
+    });
+
+    await command.handler("missing model", {
+      hasUI: true,
+      agentHome: home,
+      models: {
+        list: () => [
+          { provider: "openai-codex", id: "gpt-astra", name: "GPT Astra" },
+          { provider: "anthropic", id: "claude-opus-4.9", name: "Claude Opus 4.9" },
+        ],
+      },
+      ui: {
+        async input() { return undefined; },
+        async select(title: string, options: Array<string | { label: string }>, settings?: { initialIndex?: number }) {
+          if (title.startsWith("Stage ") || title.includes("backup")) return undefined;
+          const labels = options.map((option) => typeof option === "string" ? option : option.label);
+          const index = typeof settings?.initialIndex === "number" ? settings.initialIndex : 0;
+          return labels[index];
+        },
+        notify(message: string, level: string) { notifications.push({ message, level }); },
+      },
+    });
+
+    expect(notifications.some((notice) => notice.message.includes("missing/gone-model") && notice.message.includes("missing"))).toBe(true);
+    expect(activations).not.toContain("missing/gone-model");
   });
 });
 
