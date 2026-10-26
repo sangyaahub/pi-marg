@@ -8,7 +8,11 @@ import {
   executeAutomaticFailover,
   executeModelRoute,
   findTerminalUsageLimitFailure,
+  chooseUsageResume,
+  executeUsageResume,
   formatCatalogPresentation,
+  percentUsedFromUsage,
+  providerUsageSnapshots,
   hasConfiguredFallback,
   isUsageLimitErrorText,
   matchNumberedOption,
@@ -84,6 +88,7 @@ describe("model routing", () => {
     const catalog = buildModelCatalog(models, false);
     const formatted = formatCatalogPresentation("OMP", catalog, ["A", "C", "B", "D"]);
     expect(formatted.text).toContain("Required stages: A, B, C, D");
+    expect(formatted.text).toContain("usage remaining unknown");
     const stageHeaders = [...formatted.text.matchAll(/^## Stage ([ABCD])/gm)].map((match) => match[1]);
     expect(stageHeaders).toEqual(["A", "B", "C", "D"]);
   });
@@ -715,4 +720,46 @@ describe("model routing", () => {
     expect(overviewSelectors).toContain("cursor/composer-2");
     expect(overviewSelectors).toContain("openai-codex/gpt-6-astra");
   });
+
+  test("shows remaining usage and pauses at 95 percent onto the same-capability backup", async () => {
+    expect(percentUsedFromUsage({ percentRemaining: 4 })).toBe(96);
+    const usageModels: ModelLike[] = [
+      { provider: "anthropic", id: "claude-opus-4.9", usage: { percentUsed: 96 } },
+      { provider: "openai", id: "gpt-astra", usage: { used: 10, limit: 100 } },
+      { provider: "kimi-code", id: "k3", usage: { percentRemaining: 80 } },
+    ];
+    const snapshots = providerUsageSnapshots(usageModels);
+    expect(snapshots.find((item) => item.provider === "kimi-code")?.percentRemaining).toBe(80);
+    const catalog = buildModelCatalog(models, false);
+    const formatted = formatCatalogPresentation("OMP", catalog, ["A"], undefined, snapshots);
+    expect(formatted.text).toContain("4% remaining");
+
+    const state = emptyModelRouteState();
+    state.version = 2;
+    state.activeStage = "A";
+    const high = catalog.A.find((item) => item.provider === "openai");
+    const low = catalog.B.find((item) => item.provider === "cursor");
+    if (!high || !low) throw new Error("expected backups");
+    state.fallbacks = {
+      high: { ...high, selectedAt: "2026-10-26T00:00:00.000Z" },
+      low: { ...low, selectedAt: "2026-10-26T00:00:00.000Z" },
+    };
+    const resume = chooseUsageResume(state, snapshots, "anthropic");
+    expect(resume?.provider).toBe("openai");
+    const activated: string[] = [];
+    const execution = await executeUsageResume(state, "anthropic/claude-opus-4.9", resume!, {
+      runtimeName: "OMP",
+      models,
+      hasExternalDevin: false,
+      activate: async (model) => {
+        activated.push(`${model.provider}/${model.id}`);
+        return true;
+      },
+      persist() {},
+    });
+    expect(activated).toEqual(["openai/gpt-astra"]);
+    expect(execution.switched?.selection.selector).toBe("openai/gpt-astra");
+    expect(execution.state.lastFailover?.failedSelector).toBe("anthropic/claude-opus-4.9");
+  });
+
 });

@@ -10,8 +10,13 @@ import {
   executeAutomaticFailover,
   executeModelRoute,
   failedModelSelector,
+  chooseUsageResume,
+  executeUsageResume,
   findTerminalUsageLimitFailure,
   formatFailoverRecoveryMessage,
+  formatUsagePauseMessage,
+  providerReachedUsagePause,
+  usageSnapshotsFromMessages,
   hasConfiguredFallback,
   modelFailureKey,
   modelToolUsageLimitFailure,
@@ -370,6 +375,29 @@ export default function modelRouter(pi: any) {
 
   pi.on("agent_end", async (event: any, ctx: any) => {
     if (event?.willContinue || event?.isTerminal === false) return;
+    const liveModels = (ctx.models?.list?.() ?? []) as ModelLike[];
+    const current = ctx.models?.current?.() ?? ctx.model;
+    const snapshots = usageSnapshotsFromMessages(event?.messages ?? [], liveModels);
+    const pause = typeof current?.provider === "string" ? providerReachedUsagePause(snapshots, current.provider) : undefined;
+    if (pause && typeof current?.id === "string" && hasConfiguredFallback(state)) {
+      const pausedSelector = `${current.provider}/${current.id}`;
+      const resume = chooseUsageResume(state, snapshots, current.provider);
+      if (resume) {
+        const execution = await executeUsageResume(state, pausedSelector, resume, {
+          runtimeName: "OMP",
+          models: liveModels,
+          hasExternalDevin: hasExternalDevin(pi),
+          activate: (model) => pi.setModel(model),
+          persist: (nextState) => persistRoute(nextState, ctx),
+        });
+        state = execution.state;
+        if (execution.switched) {
+          ctx.ui?.notify?.(`PiMarg paused ${pausedSelector} at ${pause.percentUsed}% usage and resumed on ${execution.switched.selection.selector}.`, "warning");
+          pi.sendUserMessage(formatUsagePauseMessage(pausedSelector, pause, execution.switched.selection.selector), { deliverAs: "aside" });
+          return;
+        }
+      }
+    }
     const failed = findTerminalUsageLimitFailure(event?.messages ?? []);
     const failure = failed
       ? {

@@ -3,12 +3,28 @@ export type FallbackLevel = "high" | "low";
 export type CandidateTier = "frontier" | "execution" | "general";
 export type RuntimeName = "OMP" | "Pi";
 
+export interface ModelUsage {
+  percentUsed?: number;
+  percentRemaining?: number;
+  used?: number;
+  limit?: number;
+}
+
 export interface ModelLike {
   provider: string;
   id: string;
   name?: string;
   cost?: Record<string, unknown>;
+  usage?: ModelUsage;
 }
+
+export interface ProviderUsageSnapshot {
+  provider: string;
+  percentUsed: number;
+  percentRemaining: number;
+}
+
+export const USAGE_PAUSE_PERCENT = 95;
 
 export interface ModelCandidate {
   selector: string;
@@ -157,6 +173,108 @@ const EXECUTION_PATTERNS: Array<[ModelCandidate["choice"], RegExp]> = [
 export function emptyModelRouteState(): ModelRouteState {
   return { version: 2, selections: {}, fallbacks: {} };
 }
+
+
+function finitePercent(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  return Math.min(100, Math.max(0, value));
+}
+
+export function percentUsedFromUsage(usage: ModelUsage | undefined): number | undefined {
+  if (!usage) return undefined;
+  const used = finitePercent(usage.percentUsed);
+  if (used !== undefined) return used;
+  const remaining = finitePercent(usage.percentRemaining);
+  if (remaining !== undefined) return 100 - remaining;
+  if (typeof usage.used === "number" && typeof usage.limit === "number" && usage.limit > 0 && Number.isFinite(usage.used)) {
+    return finitePercent((usage.used / usage.limit) * 100);
+  }
+  return undefined;
+}
+
+export function providerUsageSnapshots(models: readonly ModelLike[]): ProviderUsageSnapshot[] {
+  const byProvider = new Map<string, number>();
+  for (const model of models) {
+    const percentUsed = percentUsedFromUsage(model.usage);
+    if (percentUsed === undefined) continue;
+    const current = byProvider.get(model.provider);
+    if (current === undefined || percentUsed > current) byProvider.set(model.provider, percentUsed);
+  }
+  return [...byProvider.entries()]
+    .map(([provider, percentUsed]) => ({
+      provider,
+      percentUsed,
+      percentRemaining: Math.max(0, 100 - percentUsed),
+    }))
+    .sort((left, right) => left.provider.localeCompare(right.provider));
+}
+
+export function usageSnapshotsFromMessages(
+  messages: readonly unknown[],
+  models: readonly ModelLike[] = [],
+): ProviderUsageSnapshot[] {
+  const reported: ModelLike[] = [...models];
+  for (const message of messages) {
+    const record = asRecord(message);
+    if (!record || typeof record.provider !== "string") continue;
+    const usage = asRecord(record.usage);
+    if (!usage) continue;
+    reported.push({
+      provider: record.provider,
+      id: typeof record.model === "string" ? record.model : "message",
+      usage: {
+        percentUsed: typeof usage.percentUsed === "number" ? usage.percentUsed : undefined,
+        percentRemaining: typeof usage.percentRemaining === "number" ? usage.percentRemaining : undefined,
+        used: typeof usage.used === "number" ? usage.used : undefined,
+        limit: typeof usage.limit === "number" ? usage.limit : undefined,
+      },
+    });
+  }
+  return providerUsageSnapshots(reported);
+}
+
+export function providerReachedUsagePause(
+  snapshots: readonly ProviderUsageSnapshot[],
+  provider: string,
+): ProviderUsageSnapshot | undefined {
+  return snapshots.find((snapshot) => snapshot.provider === provider && snapshot.percentUsed >= USAGE_PAUSE_PERCENT);
+}
+
+function fallbackFitsStage(stage: AutoStage | undefined, selection: ModelSelection): boolean {
+  if (!stage || selection.tier === "general") return true;
+  if (stage === "A" || stage === "C") return selection.tier === "frontier";
+  return selection.tier === "execution";
+}
+
+export function chooseUsageResume(
+  state: ModelRouteState,
+  snapshots: readonly ProviderUsageSnapshot[],
+  pausedProvider: string,
+): ModelSelection | undefined {
+  for (const level of FALLBACK_LEVELS) {
+    const selection = state.fallbacks[level];
+    if (!selection || selection.access !== "runtime-model") continue;
+    if (selection.provider === pausedProvider) continue;
+    if (!fallbackFitsStage(state.activeStage, selection)) continue;
+    const usage = snapshots.find((snapshot) => snapshot.provider === selection.provider);
+    if (usage && usage.percentUsed >= USAGE_PAUSE_PERCENT) continue;
+    return selection;
+  }
+  return undefined;
+}
+
+export function formatUsagePauseMessage(
+  pausedSelector: string,
+  snapshot: ProviderUsageSnapshot,
+  resumeSelector: string,
+): string {
+  return [
+    `[PiMarg usage pause] ${pausedSelector} is at ${snapshot.percentUsed}% usage (${snapshot.percentRemaining}% remaining).`,
+    "Paused and kept the current stage context.",
+    `Resume on ${resumeSelector}, a saved backup of the same stage capability.`,
+  ].join("\n");
+}
+
 
 export function isFallbackLevel(value: unknown): value is FallbackLevel {
   return typeof value === "string" && FALLBACK_LEVELS.includes(value as FallbackLevel);
@@ -471,6 +589,7 @@ export function formatCatalogPresentation(
   catalog: Record<AutoStage, ModelCandidate[]>,
   requiredStages: AutoStage[],
   providerFilter?: string,
+  usage: readonly ProviderUsageSnapshot[] = [],
 ) {
   const notes = catalogNotes(runtimeName, catalog);
   const orderedStages = ascendingStages(requiredStages);
@@ -520,7 +639,9 @@ export function formatCatalogPresentation(
     lines.push("Providers:");
     for (const provider of providers) {
       const marker = providerFilter === provider.name ? " ← selected" : "";
-      lines.push(`  ${provider.index}. ${provider.name} (${provider.count})${marker}`);
+      const snapshot = usage.find((item) => item.provider === provider.name);
+      const remaining = snapshot ? ` — ${snapshot.percentRemaining}% remaining` : " — usage remaining unknown";
+      lines.push(`  ${provider.index}. ${provider.name} (${provider.count})${remaining}${marker}`);
     }
     if (!providerFilter) {
       lines.push("Call catalog again with provider=<name> to list every model for that provider.");
@@ -581,6 +702,45 @@ export function restoreModelRouteState(entries: readonly any[]): ModelRouteState
     }
   }
   return restored;
+}
+
+
+export async function executeUsageResume(
+  currentState: ModelRouteState,
+  pausedSelector: string,
+  selection: ModelSelection,
+  port: ModelRoutePort,
+): Promise<AutomaticFailoverExecution> {
+  const level = (FALLBACK_LEVELS.find((item) => currentState.fallbacks[item]?.selector === selection.selector) ?? "high");
+  const model = port.models.find((item) => `${item.provider}/${item.id}` === selection.selector);
+  if (!model) return { state: currentState, exhausted: true, stateChanged: false };
+  let activated: boolean | void;
+  try {
+    activated = await port.activate(model);
+  } catch {
+    return { state: currentState, exhausted: false, stateChanged: false };
+  }
+  if (activated === false) return { state: currentState, exhausted: false, stateChanged: false };
+  const nextState: ModelRouteState = {
+    ...currentState,
+    version: 2,
+    activeFallback: level,
+    lastFailover: {
+      stage: currentState.activeStage,
+      failedSelector: pausedSelector,
+      fallbackLevel: level,
+      activatedSelector: selection.selector,
+      switchedAt: port.now?.() ?? new Date().toISOString(),
+    },
+  };
+  const persistenceError = persistFailoverState(port, nextState);
+  return {
+    state: nextState,
+    switched: { level, selection },
+    exhausted: false,
+    stateChanged: true,
+    ...(persistenceError ? { persistenceError } : {}),
+  };
 }
 
 export async function executeAutomaticFailover(
@@ -780,7 +940,8 @@ export async function executeModelRoute(
         };
       }
     }
-    const formatted = formatCatalogPresentation(port.runtimeName, catalog, requiredStages, providerFilter);
+    const usage = providerUsageSnapshots(port.models);
+    const formatted = formatCatalogPresentation(port.runtimeName, catalog, requiredStages, providerFilter, usage);
     return {
       state: currentState,
       response: toolResult(formatted.text, {

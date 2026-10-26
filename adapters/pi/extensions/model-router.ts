@@ -7,13 +7,20 @@ import {
   executeAutomaticFailover,
   executeModelRoute,
   failedModelSelector,
+  chooseUsageResume,
+  executeUsageResume,
   findTerminalUsageLimitFailure,
   formatFailoverRecoveryMessage,
+  formatUsagePauseMessage,
+  providerReachedUsagePause,
+  usageSnapshotsFromMessages,
   hasConfiguredFallback,
   modelFailureKey,
   modelToolUsageLimitFailure,
   type ModelLike,
   type ModelRouteParams,
+  type ModelSelection,
+  type ProviderUsageSnapshot,
 } from "../../../core/model-routing";
 import { loadRuntimeRoute, rememberRuntimeRoute } from "../../../core/user-route";
 
@@ -36,6 +43,7 @@ export default function modelRouter(pi: any) {
   let state = emptyModelRouteState();
   let recoveryToken: symbol | undefined;
   let sessionGeneration = 0;
+  let pendingUsagePause: { selector: string; snapshot: ProviderUsageSnapshot; resume: ModelSelection } | undefined;
   let pendingModelFailure: { selector: string; key: string } | undefined;
   let pendingToolFailure: { selector: string; key: string } | undefined;
   const routeHome = (ctx: any) => typeof ctx?.agentHome === "string" ? ctx.agentHome : undefined;
@@ -50,6 +58,7 @@ export default function modelRouter(pi: any) {
   const restore = (_event: unknown, ctx: any) => {
     sessionGeneration += 1;
     recoveryToken = undefined;
+    pendingUsagePause = undefined;
     pendingModelFailure = undefined;
     pendingToolFailure = undefined;
     state = loadRuntimeRoute("Pi", ctx.sessionManager.getBranch(), routeHome(ctx));
@@ -128,6 +137,17 @@ export default function modelRouter(pi: any) {
   };
 
   pi.on("agent_end", (event: any, ctx: any) => {
+    const liveModels = availableModels(ctx);
+    const current = ctx.model as ModelLike | undefined;
+    const snapshots = usageSnapshotsFromMessages(event?.messages ?? [], liveModels);
+    const pause = current?.provider ? providerReachedUsagePause(snapshots, current.provider) : undefined;
+    if (pause && current?.id && hasConfiguredFallback(state)) {
+      const pausedSelector = `${current.provider}/${current.id}`;
+      const resume = chooseUsageResume(state, snapshots, current.provider);
+      if (resume) {
+        pendingUsagePause = { selector: pausedSelector, snapshot: pause, resume };
+      }
+    }
     const failed = findTerminalUsageLimitFailure(event?.messages ?? []);
     pendingModelFailure = failed
       ? { selector: failedModelSelector(failed, ctx.model), key: modelFailureKey(failed) }
@@ -139,6 +159,25 @@ export default function modelRouter(pi: any) {
   });
 
   pi.on("agent_settled", async (_event: unknown, ctx: any) => {
+    const usagePause = pendingUsagePause;
+    pendingUsagePause = undefined;
+    if (usagePause && !pendingModelFailure && !pendingToolFailure) {
+      const execution = await executeUsageResume(state, usagePause.selector, usagePause.resume, {
+        runtimeName: "Pi",
+        models: availableModels(ctx),
+        hasExternalDevin: hasExternalDevin(pi),
+        activate: (model) => pi.setModel(model),
+        persist: (nextState) => persistRoute(nextState, ctx),
+      });
+      state = execution.state;
+      if (execution.switched) {
+        ctx.ui?.notify?.(`PiMarg paused ${usagePause.selector} at ${usagePause.snapshot.percentUsed}% usage and resumed on ${execution.switched.selection.selector}.`, "warning");
+        pi.sendUserMessage(formatUsagePauseMessage(usagePause.selector, usagePause.snapshot, execution.switched.selection.selector), { deliverAs: "followUp" });
+        pendingModelFailure = undefined;
+        pendingToolFailure = undefined;
+        return;
+      }
+    }
     const failure = pendingModelFailure ?? pendingToolFailure;
     pendingModelFailure = undefined;
     pendingToolFailure = undefined;
