@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import {
+  kimiCodeProviderPreset,
   probeModelIds,
   validateCustomProvider,
   writeCustomProvider,
@@ -17,6 +18,7 @@ import { agentDirectory } from "../../../core/user-route";
 const SETUP_ITEMS = [
   "Sign in to a provider",
   "Add a custom OpenAI-compatible provider",
+  "Add the Kimi Code preset",
   "Cancel",
 ] as const;
 
@@ -157,9 +159,34 @@ export async function addCustomProvider(ctx: any, home: string | undefined): Pro
   return { status: "ready", models };
 }
 
+export async function addKimiCodePreset(ctx: any, home: string | undefined): Promise<CatalogSetup> {
+  const preset = kimiCodeProviderPreset();
+  try {
+    const directory = agentDirectory("OMP", home);
+    writeCustomProvider({
+      modelsPath: join(directory, "models.yml"),
+      envPath: join(directory, ".env"),
+    }, preset);
+  } catch (error) {
+    ctx.ui.notify(error instanceof Error ? error.message : "Could not write the Kimi Code preset.", "error");
+    return { status: "cancelled" };
+  }
+  ctx.ui.notify(
+    `Kimi Code was added to models.yml. Set ${preset.envVar} in the environment; the API key was not stored.`,
+    "info",
+  );
+  if (typeof ctx.models?.reload === "function") {
+    await ctx.models.reload();
+  }
+  const models = (ctx.models.list() ?? []) as ModelLike[];
+  if (models.length === 0) return { status: "restart" };
+  return { status: "ready", models };
+}
+
 export async function configureEmptyCatalog(ctx: any, home: string | undefined): Promise<CatalogSetup> {
   const choice = await askItems(ctx, "Model setup", SETUP_ITEMS);
   if (!choice || choice === "Cancel") return { status: "cancelled" };
+  if (choice === "Add the Kimi Code preset") return addKimiCodePreset(ctx, home);
   if (choice === "Sign in to a provider") {
     if (typeof ctx.openLogin === "function") await ctx.openLogin();
     else ctx.ui.notify("Sign in with /login, verify with `omp models`, then run /pi-marg again.", "warning");

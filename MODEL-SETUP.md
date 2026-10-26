@@ -16,7 +16,7 @@ LIVE AUTHENTICATED CATALOG
    high backup ──► low backup
 ```
 
-If the live catalog is empty, `/pi-marg` offers three actions: sign in with `/login`, add a custom OpenAI-compatible provider, or cancel. The custom path writes `apiKey: ENV_VAR_NAME` into `~/.omp/agent/models.yml` and the secret only into `~/.omp/agent/.env`. Cancelling writes neither file.
+If the live catalog is empty, `/pi-marg` offers four actions: sign in with `/login`, add a custom OpenAI-compatible provider, add the optional Kimi Code preset, or cancel. The custom path writes `apiKey: ENV_VAR_NAME` into `~/.omp/agent/models.yml` and the secret only into `~/.omp/agent/.env`. The Kimi preset uses that same writer with provider id `kimi-code`, display name `Kimi Code`, base URL `https://api.kimi.com/coding/v1`, env var `KIMI_API_KEY`, and the model ids from OMP's Kimi Code provider rule. It does not write an API key. Cancelling writes neither file. A logged-in Kimi provider is listed with every other authenticated provider; the preset is not required for that.
 
 ## Roles
 

@@ -762,4 +762,50 @@ describe("model routing", () => {
     expect(execution.state.lastFailover?.failedSelector).toBe("anthropic/claude-opus-4.9");
   });
 
+  test("keeps a logged-in Kimi provider in the numbered catalog", async () => {
+    const liveModels: ModelLike[] = [
+      ...models,
+      { provider: "kimi-code", id: "k3-256k", name: "K3-256k" },
+      { provider: "kimi-code", id: "kimi-for-coding", name: "Kimi for Coding", usage: { percentRemaining: 40 } },
+    ];
+    const catalog = buildModelCatalog(liveModels, false);
+    expect(uniqueProviders(catalog.A)).toContain("kimi-code");
+    for (const stage of ["A", "B", "C", "D"] as const) {
+      expect(catalog[stage].map((item) => item.selector)).toEqual(expect.arrayContaining([
+        "kimi-code/k3-256k",
+        "kimi-code/kimi-for-coding",
+      ]));
+    }
+
+    const overview = await executeModelRoute(emptyModelRouteState(), {
+      action: "catalog",
+      workType: 3,
+    }, {
+      runtimeName: "OMP",
+      models: liveModels,
+      hasExternalDevin: false,
+      activate: async () => true,
+      persist() {},
+    });
+    const overviewText = overview.response.content[0]?.text ?? "";
+    expect(overviewText).toMatch(/\d+\. kimi-code \(\d+\) — 40% remaining/);
+    expect(overviewText).toMatch(/\d+\. anthropic \(\d+\) — usage remaining unknown/);
+    expect(overviewText).not.toContain("kimi-code/k3-256k —");
+
+    const filtered = await executeModelRoute(emptyModelRouteState(), {
+      action: "catalog",
+      workType: 3,
+      provider: "kimi-code",
+    }, {
+      runtimeName: "OMP",
+      models: liveModels,
+      hasExternalDevin: false,
+      activate: async () => true,
+      persist() {},
+    });
+    const filteredText = filtered.response.content[0]?.text ?? "";
+    expect(filteredText).toContain("1. K3-256k — kimi-code/k3-256k");
+    expect(filteredText).toContain("kimi-code/kimi-for-coding");
+  });
+
 });

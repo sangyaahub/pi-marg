@@ -15,6 +15,28 @@ export interface ProviderFiles {
   envPath: string;
 }
 
+const KIMI_CODE_MODEL_IDS = [
+  "kimi-for-coding",
+  "k3",
+  "k3-256k",
+  "kimi-for-coding-highspeed",
+  "kimi-k2",
+  "kimi-k2.5",
+  "kimi-k2-turbo-preview",
+] as const;
+
+/** Optional Kimi Code models.yml input. It names the env var and does not carry an API key. */
+export function kimiCodeProviderPreset(): CustomProviderInput {
+  return {
+    providerId: "kimi-code",
+    displayName: "Kimi Code",
+    baseUrl: "https://api.kimi.com/coding/v1",
+    envVar: "KIMI_API_KEY",
+    modelIds: [...KIMI_CODE_MODEL_IDS],
+    allowLocalHttp: false,
+  };
+}
+
 const PROVIDER_ID = /^[a-z0-9_-]+$/;
 const ENV_VAR = /^[A-Z][A-Z0-9_]*$/;
 const MODEL_ID = /^[A-Za-z0-9._:-]+$/;

@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
@@ -681,9 +681,76 @@ describe("OMP interactive PiMarg command", () => {
 
     expect(setupOptions.some((label) => label.includes("Sign in"))).toBe(true);
     expect(setupOptions.some((label) => label.includes("custom OpenAI-compatible"))).toBe(true);
+    expect(setupOptions.some((label) => label.includes("Kimi Code preset"))).toBe(true);
     expect(setupOptions.some((label) => label.includes("Cancel"))).toBe(true);
     expect(entries).toHaveLength(0);
     expect(messages).toHaveLength(0);
+  });
+
+  test("adds the optional Kimi preset without asking for or storing an API key", async () => {
+    let command: any;
+    const home = mkdtempSync(join(tmpdir(), "pi-marg-kimi-preset-"));
+    const providerLabels: string[] = [];
+    let inputCalls = 0;
+    let models: Array<{ provider: string; id: string; name: string }> = [];
+    const pi: any = {
+      zod: fakeZod(),
+      on() {},
+      registerTool() {},
+      registerCommand(name: string, definition: any) {
+        if (name === "pi-marg") command = definition;
+      },
+      getAllTools: () => [],
+      appendEntry() {},
+      sendUserMessage() {},
+      setModel: async () => true,
+    };
+    modelRouter(pi);
+
+    await command.handler("add kimi", {
+      hasUI: true,
+      agentHome: home,
+      models: {
+        list: () => models,
+        async reload() {
+          models = [
+            { provider: "anthropic", id: "claude-opus-4.9", name: "Claude Opus 4.9" },
+            { provider: "kimi-code", id: "k3-256k", name: "K3-256k" },
+          ];
+        },
+      },
+      ui: {
+        async input() {
+          inputCalls += 1;
+          return undefined;
+        },
+        async select(title: string, options: Array<string | { label: string }>) {
+          const labels = options.map((option) => typeof option === "string" ? option : option.label);
+          if (title === "Work boundary") return labels[0];
+          if (title === "Work type") return labels.find((label) => label.startsWith("1."));
+          if (title === "Workflow skill") return labels[0];
+          if (title === "Model setup") return labels.find((label) => label.includes("Kimi Code preset"));
+          if (title === "Stage A provider") {
+            providerLabels.push(...labels);
+            return undefined;
+          }
+          return undefined;
+        },
+        notify() {},
+      },
+    });
+
+    const directory = agentDirectory("OMP", home);
+    const yaml = readFileSync(join(directory, "models.yml"), "utf8");
+    expect(yaml).toContain("  kimi-code:");
+    expect(yaml).toContain("baseUrl: https://api.kimi.com/coding/v1");
+    expect(yaml).toContain("apiKey: KIMI_API_KEY");
+    expect(yaml).toContain("id: k3-256k");
+    expect(yaml).not.toMatch(/sk-|KIMI_API_KEY=\S+/);
+    expect(existsSync(join(directory, ".env"))).toBe(false);
+    expect(inputCalls).toBe(0);
+    expect(providerLabels.some((label) => /\d+\. kimi-code \(/.test(label))).toBe(true);
+    expect(providerLabels.some((label) => /\d+\. anthropic \(/.test(label))).toBe(true);
   });
 
   test("asks for a prompt when started without one and cancels without partial state", async () => {

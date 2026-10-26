@@ -1,9 +1,10 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 
 import {
+  kimiCodeProviderPreset,
   probeModelIds,
   validateCustomProvider,
   writeCustomProvider,
@@ -78,5 +79,43 @@ describe("custom provider config", () => {
     expect(yaml).toContain("id: model-a");
     expect(yaml).not.toContain("guessed-model");
     expect(yaml).not.toContain("super-secret-value");
+  });
+
+  test("writes the optional Kimi preset through writeCustomProvider without an API key", () => {
+    const preset = kimiCodeProviderPreset();
+    expect(validateCustomProvider(preset)).toBeUndefined();
+    expect(preset).toMatchObject({
+      providerId: "kimi-code",
+      displayName: "Kimi Code",
+      baseUrl: "https://api.kimi.com/coding/v1",
+      envVar: "KIMI_API_KEY",
+      allowLocalHttp: false,
+    });
+    expect(preset.modelIds).toEqual([
+      "kimi-for-coding",
+      "k3",
+      "k3-256k",
+      "kimi-for-coding-highspeed",
+      "kimi-k2",
+      "kimi-k2.5",
+      "kimi-k2-turbo-preview",
+    ]);
+
+    const dir = mkdtempSync(join(tmpdir(), "pi-marg-kimi-preset-"));
+    const modelsPath = join(dir, "models.yml");
+    const envPath = join(dir, ".env");
+    writeFileSync(modelsPath, cheaper);
+    writeCustomProvider({ modelsPath, envPath }, preset);
+
+    const yaml = readFileSync(modelsPath, "utf8");
+    expect(yaml).toContain("  kimi-code:");
+    expect(yaml).toContain("baseUrl: https://api.kimi.com/coding/v1");
+    expect(yaml).toContain("apiKey: KIMI_API_KEY");
+    expect(yaml).toContain('name: "Kimi Code"');
+    for (const id of preset.modelIds) expect(yaml).toContain(`id: ${id}`);
+    expect(yaml).toContain("cheaperinference:");
+    expect(yaml).not.toContain("sk-");
+    expect(yaml).not.toContain("KIMI_API_KEY=");
+    expect(existsSync(envPath)).toBe(false);
   });
 });
