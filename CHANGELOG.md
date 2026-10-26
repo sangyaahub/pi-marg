@@ -1,4 +1,10 @@
 # Changelog
+## 1.0.8 — 2026-10-26
+
+- A provider reporting 95% usage pauses while its stage context is kept. The saved high then low backup resumes the stage only when it is a different provider, fits the same stage, and is itself under 95%. Hard quota errors keep the existing failover.
+- Provider lines in the catalog show remaining usage when the host reports `percentUsed`, `percentRemaining`, or `used`/`limit`, and say usage remaining is unknown otherwise.
+- An empty OMP catalog can add the optional Kimi Code preset through the same custom-provider writer. It stores the `KIMI_API_KEY` env var name, writes no API key, and is not needed for a logged-in (OAuth) `kimi-code` provider.
+
 
 ## 1.0.7 — 2026-10-03
 
