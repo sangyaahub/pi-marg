@@ -61,12 +61,14 @@ Ask with the question tool. Question: Which method should own this task? Options
 1. `Compound Engineering`
 2. `Superpowers`
 3. `GSD Core`
-4. `Choose the best one for me`
+4. `Elephant-Goldfish Model (EGM)`
+5. `Choose the best one for me`
 
 - Mode 1: use the Compound Engineering mapping for the confirmed work type.
 - Mode 2: use the Superpowers mapping.
 - Mode 3: first verify that GSD skills and their required tools are available in the active runtime. If not, explain the incompatibility and offer a supported alternative.
-- Mode 4: choose one primary spine using the routing criteria. Explain the choice in one short sentence and ask for confirmation only if the trade-off is material.
+- Mode 4: EGM is a spec-first spine: the Elephant (this session) drafts the design and fresh-context Goldfish reviewers audit it. First verify that `skill://egm-brainstorm` resolves and that `auto_runtime_status` reports `task`; a review in the same context is not a Goldfish review, so without `task` explain the gap and offer a supported alternative. EGM has no debugging or security route, so for work types 4 and 5 offer a supported alternative instead of forcing it. EGM skills set `disable-model-invocation`, so load them by reading `skill://egm-<name>`; the user can also run `/skill:egm-<name>` on OMP.
+- Mode 5: choose one primary spine using the routing criteria. Explain the choice in one short sentence and ask for confirmation only if the trade-off is material.
 
 ## Stage 4 — live model choices
 
@@ -119,8 +121,8 @@ After intake, emit a compact conversational state block and save the same facts 
 [AUTO-MODE]
 context: job-client | personal
 type: 1..7
-mode: 1..4
-spine: compound-engineering | superpowers | gsd | none
+mode: 1..5
+spine: compound-engineering | superpowers | gsd | egm | none
 models: A=<selector> B=<selector|n/a> C=<selector> D=<selector|n/a>
 fallbacks: high=<runtime-selector> low=<different-runtime-selector> active=<none|high|low|exhausted>
 runtime: advisor=<off|available|on|unavailable> orchestration=<serial|task|workflowz> checkpoint=<off|available|used>

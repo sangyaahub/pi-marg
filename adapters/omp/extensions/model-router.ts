@@ -54,7 +54,8 @@ const SKILL_MODES = [
   "1. Compound Engineering",
   "2. Superpowers",
   "3. GSD Core",
-  "4. PiMarg chooses the best available skill",
+  "4. Elephant-Goldfish Model (EGM)",
+  "5. PiMarg chooses the best available skill",
 ] as const;
 
 const STAGE_PURPOSE: Record<AutoStage, string> = {
@@ -94,6 +95,7 @@ const SKILL_MODE_ITEMS = [
   "Compound Engineering",
   "Superpowers",
   "GSD Core",
+  "Elephant-Goldfish Model (EGM)",
   "PiMarg chooses the best available skill",
 ] as const;
 

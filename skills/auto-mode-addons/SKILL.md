@@ -12,4 +12,4 @@ Load only the reference needed for the active task:
 - For Go, Python, or TypeScript guidance, read [language-skills.md](references/language-skills.md).
 - For model and token budget decisions, read [cost-control.md](references/cost-control.md).
 
-An add-on supplies constraints, memory, or evidence. The primary Compound Engineering, Superpowers, or GSD spine still owns task state and the authoritative plan. Verify the upstream capability is installed and discovered before saying it ran.
+An add-on supplies constraints, memory, or evidence. The primary Compound Engineering, Superpowers, GSD, or EGM spine still owns task state and the authoritative plan. Verify the upstream capability is installed and discovered before saying it ran.

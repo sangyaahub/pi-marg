@@ -24,6 +24,7 @@ The selected workflow family's native plan remains authoritative:
 - Compound Engineering: its generated brainstorm/plan document.
 - Superpowers: its generated design/implementation plan.
 - GSD: `.planning/` state and phase plans.
+- EGM: the approved design document (`design_draft.md`, preceded by `concepts_brief.md`).
 - No technical spine: `plan.md` in the neutral session folder.
 
 The neutral `plan.md` is an index when a native plan exists. It records the goal, acceptance criteria, current phase, and a link/path to the authoritative plan; it does not duplicate the full plan.
@@ -39,8 +40,8 @@ Record:
 - Work context: job-client | personal
 - Branding: client-project-only | existing-project-opt-in
 - Work type: 1..7 — <label>
-- Skill mode: 1..4
-- Primary spine: compound-engineering | superpowers | gsd | none
+- Skill mode: 1..5
+- Primary spine: compound-engineering | superpowers | gsd | egm | none
 - Current phase: intake | analysis | plan | build | verify | review | security | lessons | commit
 - Authoritative plan: <path or none>
 - Stage A model: <exact live selector>

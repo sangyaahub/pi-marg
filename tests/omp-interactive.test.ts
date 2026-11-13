@@ -148,6 +148,71 @@ describe("OMP interactive PiMarg command", () => {
     expect(messages[0]).toContain("Low backup: openai-codex/gpt-terra");
   });
 
+  test("offers Elephant-Goldfish Model as a workflow skill and carries it into the saved route and intake message", async () => {
+    let command: any;
+    const entries: Array<{ type: string; data: any }> = [];
+    const messages: string[] = [];
+    const optionSets = new Map<string, string[]>();
+    const models = [
+      { provider: "anthropic", id: "claude-opus-4.9", name: "Claude Opus 4.9" },
+      { provider: "openai-codex", id: "gpt-astra", name: "GPT Astra" },
+      { provider: "anthropic", id: "claude-sonnet-4.8", name: "Claude Sonnet 4.8" },
+      { provider: "openai-codex", id: "gpt-terra", name: "GPT Terra" },
+    ];
+    const selectedByStage: Record<string, string> = {
+      A: "openai-codex/gpt-astra",
+      C: "anthropic/claude-opus-4.9",
+      B: "openai-codex/gpt-terra",
+      D: "anthropic/claude-sonnet-4.8",
+    };
+    const selectedFallbacks = {
+      high: "anthropic/claude-opus-4.9",
+      low: "openai-codex/gpt-terra",
+    };
+    const pi: any = {
+      zod: fakeZod(),
+      on() {},
+      registerTool() {},
+      registerCommand(name: string, definition: any) {
+        if (name === "pi-marg") command = definition;
+      },
+      getAllTools: () => [],
+      appendEntry(type: string, data: any) { entries.push({ type, data }); },
+      sendUserMessage(message: string) { messages.push(message); },
+      setModel: async () => true,
+    };
+    modelRouter(pi);
+
+    await command.handler("design webhook delivery", {
+      hasUI: true,
+      mode: "tui",
+      models: { list: () => models },
+      ui: {
+        async input() { return undefined; },
+        async select(title: string, options: Array<string | { label: string }>) {
+          const labels = options.map((option) => typeof option === "string" ? option : option.label);
+          optionSets.set(title, labels);
+          if (title === "Workflow skill") return labels.find((label) => label.includes("EGM"));
+          return selectFromOptions(title, options, selectedByStage, selectedFallbacks);
+        },
+        notify() {},
+      },
+    });
+
+    const skills = optionSets.get("Workflow skill")!;
+    expect(skills.map((label) => label.replace(/^\d+\. /, ""))).toEqual([
+      "Compound Engineering",
+      "Superpowers",
+      "GSD Core",
+      "Elephant-Goldfish Model (EGM)",
+      "PiMarg chooses the best available skill",
+    ]);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.data.skillMode).toBe("4. Elephant-Goldfish Model (EGM)");
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toContain("Workflow skill: 4. Elephant-Goldfish Model (EGM)");
+  });
+
   test("switches and resumes after OMP settles a usage-limit failure", async () => {
     const handlers = new Map<string, any>();
     const entries: Array<{ type: string; data: any }> = [];

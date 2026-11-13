@@ -1,4 +1,8 @@
 # Changelog
+## 1.0.9 — 2026-11-13
+
+- Added Elephant-Goldfish Model (EGM) as workflow skill 4 in `/pi-marg` intake; "PiMarg chooses the best available skill" is now 5, so a saved route that held the old option 4 loses its highlight once and is otherwise unaffected. EGM routes work types 1, 2, 3, 6, and 7 through `egm-brainstorm`, `egm-draft`, `egm-review`/`egm-review-loop`, and `egm-drift-report`, and requires the `egm` plugin plus the `task` tool for fresh-context Goldfish review. It has no debugging or security route, so types 4 and 5 fall back to another spine.
+
 ## 1.0.8 — 2026-10-26
 
 - A provider reporting 95% usage pauses while its stage context is kept. The saved high then low backup resumes the stage only when it is a different provider, fits the same stage, and is itself under 95%. Hard quota errors keep the existing failover.
